@@ -1,14 +1,21 @@
 # Python
 __pycache__/
 *.py[cod]
-*.pyo
+*$py.class
 
 # Virtual environment
 .venv/
 venv/
+env/
 
 # Environment variables
 .env
+.env.*
+
+# SQLite database
+*.db
+*.sqlite
+*.sqlite3
 
 # IDE
 .vscode/
@@ -17,3 +24,19 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+
+# Logs
+*.log
+
+# Test/cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local uploads
+uploads/
+# Local environment secrets
+.env
+.env.*

@@ -1,0 +1,766 @@
+/* =========================================================
+   PLACEMENTPILOT AI — PROFILE PAGE
+   Modern SaaS / Dashboard UI
+   ========================================================= */
+
+.profile-page {
+  min-height: 100vh;
+  background:
+    radial-gradient(
+      circle at 10% 0%,
+      rgba(99, 91, 255, 0.10),
+      transparent 28%
+    ),
+    radial-gradient(
+      circle at 90% 10%,
+      rgba(139, 92, 246, 0.08),
+      transparent 25%
+    ),
+    linear-gradient(
+      135deg,
+      #f8f9ff 0%,
+      #f4f5fb 50%,
+      #eef0f8 100%
+    );
+
+  padding: 32px 42px 60px;
+  color: #171724;
+}
+
+
+/* =========================================================
+   HEADER
+   ========================================================= */
+
+.profile-header {
+  max-width: 1400px;
+  margin: 0 auto 26px;
+
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 24px;
+}
+
+.profile-header > div {
+  min-width: 0;
+}
+
+.profile-header h1 {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.9px;
+  color: #171724;
+}
+
+.profile-header p {
+  margin: 6px 0 0;
+  color: #717184;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+
+/* =========================================================
+   BUTTONS
+   ========================================================= */
+
+.back-button,
+.save-button {
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 700;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease;
+}
+
+.back-button {
+  padding: 10px 15px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.78);
+  color: #525263;
+  border: 1px solid #e1e2eb;
+  font-size: 12px;
+}
+
+.back-button:hover {
+  background: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 5px 14px rgba(20, 20, 50, 0.07);
+}
+
+.save-button {
+  min-height: 42px;
+  padding: 10px 18px;
+  border-radius: 10px;
+  background: #635bff;
+  color: #ffffff;
+  font-size: 12px;
+  box-shadow: 0 6px 16px rgba(99, 91, 255, 0.22);
+}
+
+.save-button:hover {
+  background: #5048d8;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(99, 91, 255, 0.28);
+}
+
+.save-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+
+/* =========================================================
+   SUCCESS / ERROR
+   ========================================================= */
+
+.profile-success,
+.profile-error {
+  max-width: 1400px;
+  margin: 0 auto 20px;
+  padding: 13px 16px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.profile-success {
+  background: #ecfdf5;
+  color: #087443;
+  border: 1px solid #bcebd6;
+}
+
+.profile-error {
+  background: #fff1f3;
+  color: #c72f4a;
+  border: 1px solid #ffd0d8;
+}
+
+
+/* =========================================================
+   MAIN GRID
+   ========================================================= */
+
+.profile-grid {
+  max-width: 1400px;
+  margin: 0 auto;
+
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  align-items: start;
+}
+
+
+/* =========================================================
+   CARDS
+   ========================================================= */
+
+.profile-card {
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(226, 227, 237, 0.95);
+  border-radius: 18px;
+  padding: 24px;
+
+  box-shadow:
+    0 8px 30px rgba(31, 35, 60, 0.055),
+    0 2px 7px rgba(31, 35, 60, 0.025);
+
+  backdrop-filter: blur(8px);
+}
+
+.profile-card:hover {
+  box-shadow:
+    0 12px 34px rgba(31, 35, 60, 0.075),
+    0 3px 9px rgba(31, 35, 60, 0.03);
+}
+
+.profile-card.full-card {
+  grid-column: 1 / -1;
+}
+
+
+/* =========================================================
+   CARD HEADING
+   ========================================================= */
+
+.card-heading {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  margin-bottom: 22px;
+}
+
+.card-heading > svg {
+  width: 40px;
+  height: 40px;
+  padding: 10px;
+
+  flex-shrink: 0;
+
+  border-radius: 11px;
+  background: #efefff;
+  color: #635bff;
+}
+
+.card-heading h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.35px;
+}
+
+.card-heading p {
+  margin: 4px 0 0;
+  color: #858596;
+  font-size: 11px;
+}
+
+
+/* =========================================================
+   FORM
+   ========================================================= */
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.form-group {
+  min-width: 0;
+}
+
+.form-group.full-width {
+  grid-column: 1 / -1;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 7px;
+  color: #555568;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.form-group input,
+.form-group textarea {
+  width: 100%;
+  border: 1px solid #dedfea;
+  border-radius: 10px;
+  background: #fafaff;
+  color: #171724;
+
+  padding: 11px 12px;
+
+  outline: none;
+  font-size: 12px;
+
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease;
+}
+
+.form-group input {
+  height: 42px;
+}
+
+.form-group textarea {
+  min-height: 125px;
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.form-group input:hover,
+.form-group textarea:hover {
+  background: #ffffff;
+  border-color: #d0d1df;
+}
+
+.form-group input:focus,
+.form-group textarea:focus {
+  background: #ffffff;
+  border-color: #635bff;
+  box-shadow: 0 0 0 3px rgba(99, 91, 255, 0.09);
+}
+
+.form-group input::placeholder,
+.form-group textarea::placeholder {
+  color: #aaaabd;
+}
+
+
+/* =========================================================
+   ABOUT ME
+   ========================================================= */
+
+.profile-card:has(textarea) {
+  min-height: 100%;
+}
+
+
+/* =========================================================
+   SKILLS
+   ========================================================= */
+
+.skill-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.skill-row {
+  min-height: 68px;
+
+  padding: 12px 14px;
+
+  border: 1px solid #e6e7ef;
+  border-radius: 13px;
+
+  background: #fcfcff;
+
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.skill-row:hover {
+  background: #ffffff;
+  border-color: #d8d9e7;
+  box-shadow: 0 5px 16px rgba(31, 35, 60, 0.045);
+}
+
+.skill-row > div:first-child {
+  min-width: 150px;
+}
+
+.skill-row strong {
+  font-size: 13px;
+  font-weight: 800;
+  color: #202030;
+}
+
+.skill-row small {
+  color: #858596;
+  font-size: 10px;
+}
+
+
+/* =========================================================
+   SKILL PROGRESS
+   ========================================================= */
+
+.skill-progress {
+  min-width: 260px;
+  flex: 1;
+
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.skill-bar {
+  height: 8px;
+  flex: 1;
+
+  background: #e9e9f2;
+  border-radius: 50px;
+
+  overflow: hidden;
+}
+
+.skill-bar span {
+  display: block;
+  height: 100%;
+
+  background: linear-gradient(
+    90deg,
+    #635bff 0%,
+    #8d86ff 100%
+  );
+
+  border-radius: inherit;
+
+  transition: width 0.4s ease;
+}
+
+.skill-progress > strong {
+  width: 38px;
+  text-align: right;
+
+  color: #635bff;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+
+/* =========================================================
+   SKILL EDIT FORM
+   ========================================================= */
+
+.skill-row .form-group {
+  min-width: 0;
+}
+
+.skill-row .form-group label {
+  margin-bottom: 5px;
+  font-size: 10px;
+}
+
+.skill-row .form-group input {
+  height: 38px;
+  padding: 8px 10px;
+  font-size: 11px;
+}
+
+
+/* =========================================================
+   ADD SKILL BOX
+   ========================================================= */
+
+.profile-card > div[style*="marginBottom"] {
+  background:
+    linear-gradient(
+      135deg,
+      #fafaff 0%,
+      #f5f4ff 100%
+    ) !important;
+
+  border: 1px solid #dfdef8 !important;
+  border-radius: 14px !important;
+}
+
+.profile-card > div[style*="marginBottom"] h3 {
+  color: #272738;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+
+/* =========================================================
+   SKILL ACTION BUTTONS
+   ========================================================= */
+
+.skill-row button {
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease,
+    background 0.15s ease;
+}
+
+.skill-row button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(20, 20, 40, 0.08);
+}
+
+.skill-row button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+
+/* =========================================================
+   PROJECTS
+   ========================================================= */
+
+.project-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.project-item {
+  padding: 18px;
+
+  border: 1px solid #e6e7ef;
+  border-radius: 13px;
+
+  background: #fcfcff;
+}
+
+.project-item h3 {
+  margin: 0 0 8px;
+
+  font-size: 15px;
+  font-weight: 800;
+  color: #202030;
+}
+
+.project-item p {
+  margin: 0 0 10px;
+
+  color: #717184;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.project-item small {
+  display: inline-block;
+
+  padding: 5px 9px;
+
+  border-radius: 6px;
+
+  background: #f0efff;
+  color: #635bff;
+
+  font-size: 9px;
+  font-weight: 700;
+}
+
+
+/* =========================================================
+   CERTIFICATIONS
+   ========================================================= */
+
+.certification-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.certification-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+
+  padding: 16px 18px;
+
+  border: 1px solid #e6e7ef;
+  border-radius: 13px;
+
+  background: #fcfcff;
+}
+
+.certification-item h3 {
+  margin: 0 0 5px;
+
+  font-size: 14px;
+  font-weight: 800;
+  color: #202030;
+}
+
+.certification-item p {
+  margin: 0;
+
+  color: #777789;
+  font-size: 11px;
+}
+
+.certification-item > span {
+  flex-shrink: 0;
+
+  padding: 6px 10px;
+
+  border-radius: 7px;
+
+  background: #eaf9f2;
+  color: #16865b;
+
+  font-size: 10px;
+  font-weight: 800;
+}
+
+
+/* =========================================================
+   EMPTY STATES
+   ========================================================= */
+
+.skill-list > p,
+.project-list > p,
+.certification-list > p {
+  margin: 0;
+  padding: 20px;
+
+  text-align: left;
+
+  border: 1px dashed #dcdde7;
+  border-radius: 11px;
+
+  color: #8a8a9b;
+  background: #fafafd;
+
+  font-size: 11px;
+}
+
+
+/* =========================================================
+   LOADING
+   ========================================================= */
+
+.profile-loading {
+  min-height: 100vh;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  background:
+    radial-gradient(
+      circle at 20% 10%,
+      rgba(99, 91, 255, 0.10),
+      transparent 30%
+    ),
+    #f6f7fc;
+
+  color: #717184;
+
+  font-size: 14px;
+  font-weight: 600;
+}
+
+
+/* =========================================================
+   RESPONSIVE — TABLET
+   ========================================================= */
+
+@media (max-width: 1100px) {
+  .profile-page {
+    padding: 26px 26px 50px;
+  }
+
+  .profile-header {
+    grid-template-columns: auto 1fr;
+  }
+
+  .profile-header .save-button {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .profile-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-card.full-card {
+    grid-column: auto;
+  }
+
+  .skill-progress {
+    min-width: 180px;
+  }
+}
+
+
+/* =========================================================
+   RESPONSIVE — MOBILE
+   ========================================================= */
+
+@media (max-width: 700px) {
+  .profile-page {
+    padding: 18px 14px 40px;
+  }
+
+  .profile-header {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+  }
+
+  .profile-header h1 {
+    font-size: 25px;
+  }
+
+  .profile-header p {
+    font-size: 12px;
+  }
+
+  .back-button,
+  .save-button {
+    width: 100%;
+  }
+
+  .profile-grid {
+    gap: 14px;
+  }
+
+  .profile-card {
+    padding: 18px;
+    border-radius: 15px;
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr;
+    gap: 13px;
+  }
+
+  .form-group.full-width {
+    grid-column: auto;
+  }
+
+  .card-heading {
+    margin-bottom: 18px;
+  }
+
+  .card-heading > svg {
+    width: 36px;
+    height: 36px;
+  }
+
+  .skill-row {
+    flex-wrap: wrap !important;
+    gap: 10px !important;
+  }
+
+  .skill-row > div:first-child {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .skill-progress {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .skill-row > button {
+    flex-shrink: 0;
+  }
+
+  .project-item,
+  .certification-item {
+    padding: 14px;
+  }
+}
+
+
+/* =========================================================
+   RESPONSIVE — SMALL PHONE
+   ========================================================= */
+
+@media (max-width: 420px) {
+  .profile-page {
+    padding: 14px 10px 30px;
+  }
+
+  .profile-card {
+    padding: 15px;
+  }
+
+  .profile-header h1 {
+    font-size: 22px;
+  }
+
+  .skill-progress {
+    gap: 7px;
+  }
+
+  .skill-progress > strong {
+    width: 34px;
+  }
+
+  .certification-item {
+    align-items: flex-start;
+  }
+}
