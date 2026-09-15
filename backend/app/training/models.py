@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, DateTime, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.sql import func
 
 from app.database.database import Base
@@ -9,7 +9,12 @@ class TrainingProgress(Base):
 
     id = Column(Integer, primary_key=True, index=True)
 
-    user_id = Column(Integer, nullable=False, index=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
 
     skill = Column(String(100), nullable=False, index=True)
 

@@ -1,13 +1,17 @@
+import json
 from typing import List, Optional
+from sqlalchemy.orm import Session
 
 from app.interview.schemas import (
     InterviewQuestion,
     InterviewEvaluation,
 )
-
 from app.ai.evaluator import evaluator
-from app.database.database import SessionLocal
-from app.interview.models import InterviewResult
+from app.interview.models import (
+    InterviewResult,
+    InterviewSession,
+    InterviewQuestionAnswer,
+)
 
 
 # ============================================================
@@ -669,115 +673,124 @@ def get_questions(
 
 
 # ============================================================
-# INTERVIEW SESSION STORAGE
-# ============================================================
-
-INTERVIEW_SESSIONS = {}
-
-_next_interview_id = 1
-
-
-# ============================================================
-# CREATE SESSION
+# DATABASE-PERSISTED INTERVIEW SESSIONS
 # ============================================================
 
 def create_interview_session(
+    db: Session,
     questions: List[InterviewQuestion],
     target_role: str,
     interview_type: str,
     difficulty: str,
     company: Optional[str] = None,
     user_id: Optional[int] = None,
-):
+) -> InterviewSession:
     """
-    Create a temporary interview session.
-
-    Database persistence can be added later.
+    Create and persist a new interview session in SQLite database.
     """
-
-    global _next_interview_id
-
-    interview_id = _next_interview_id
-    _next_interview_id += 1
-
     normalized_company = normalize_company(company)
 
-    INTERVIEW_SESSIONS[interview_id] = {
-        "interview_id": interview_id,
-        "user_id": user_id,
-        "company": normalized_company,
-        "target_role": target_role,
-        "interview_type": interview_type,
-        "difficulty": difficulty,
-        "questions": questions,
-        "current_index": 0,
-        "answers": [],
-        "evaluations": [],
-    }
+    questions_data = [
+        {
+            "question_id": q.question_id,
+            "question": q.question,
+            "category": q.category,
+            "difficulty": q.difficulty,
+            "company": q.company,
+        }
+        for q in questions
+    ]
 
-    return INTERVIEW_SESSIONS[interview_id]
+    session = InterviewSession(
+        user_id=user_id,
+        company=normalized_company,
+        target_role=target_role,
+        interview_type=interview_type,
+        difficulty=difficulty,
+        current_index=0,
+        total_questions=len(questions),
+        questions_json=json.dumps(questions_data),
+        status="in_progress",
+    )
 
+    db.add(session)
+    db.commit()
+    db.refresh(session)
 
-# ============================================================
-# GET SESSION
-# ============================================================
+    return session
+
 
 def get_interview_session(
+    db: Session,
     interview_id: int,
-):
+) -> Optional[InterviewSession]:
     """
-    Retrieve an active interview session.
+    Retrieve an active or completed interview session from database.
     """
-
-    return INTERVIEW_SESSIONS.get(
-        interview_id
+    return (
+        db.query(InterviewSession)
+        .filter(InterviewSession.id == interview_id)
+        .first()
     )
 
 
-# ============================================================
-# SAVE EVALUATION
-# ============================================================
-
 def save_interview_evaluation(
+    db: Session,
     interview_id: int,
     question_id: int,
     answer: str,
     evaluation: InterviewEvaluation,
 ):
     """
-    Save an answer and its evaluation.
+    Save an interview answer evaluation to database.
     """
-
-    session = INTERVIEW_SESSIONS.get(
-        interview_id
-    )
+    session = get_interview_session(db, interview_id)
 
     if session is None:
         return None
 
-    session["answers"].append(
-        {
-            "question_id": question_id,
-            "answer": answer,
-        }
+    questions = json.loads(session.questions_json)
+
+    question_text = ""
+    category = "general"
+
+    for q in questions:
+        if q.get("question_id") == question_id:
+            question_text = q.get("question", "")
+            category = q.get("category", "general")
+            break
+
+    eval_data = (
+        evaluation.model_dump()
+        if hasattr(evaluation, "model_dump")
+        else evaluation.__dict__
     )
 
-    session["evaluations"].append(
-        evaluation
+    qa = InterviewQuestionAnswer(
+        session_id=session.id,
+        question_id=question_id,
+        question_text=question_text,
+        category=category,
+        user_answer=answer,
+        score=float(evaluation.score),
+        evaluation_json=json.dumps(eval_data),
     )
 
-    session["current_index"] += 1
+    db.add(qa)
 
-    # Persist the final interview result when all questions are answered.
-    if session["current_index"] >= len(session["questions"]):
-        _persist_interview_result(session)
+    session.current_index += 1
+
+    if session.current_index >= len(questions):
+        session.status = "completed"
+        db.commit()
+        db.refresh(session)
+        _persist_interview_result(db, session)
+    else:
+        db.commit()
+        db.refresh(session)
 
     return session
 
-
-# ============================================================
-# PERSIST INTERVIEW RESULT
-# ============================================================
 
 def _get_performance_level(score: float) -> str:
     if score >= 80:
@@ -789,88 +802,83 @@ def _get_performance_level(score: float) -> str:
     return "needs_improvement"
 
 
-def _persist_interview_result(session) -> None:
-    """Persist the completed interview score for placement readiness."""
-
-    user_id = session.get("user_id")
+def _persist_interview_result(db: Session, session: InterviewSession) -> None:
+    """Persist completed interview result for placement readiness calculations."""
+    user_id = session.user_id
     if user_id is None:
         return
 
-    evaluations = session.get("evaluations", [])
-    if not evaluations:
+    answers = (
+        db.query(InterviewQuestionAnswer)
+        .filter(InterviewQuestionAnswer.session_id == session.id)
+        .all()
+    )
+
+    if not answers:
         return
 
     average_score = round(
-        sum(evaluation.score for evaluation in evaluations)
-        / len(evaluations),
+        sum(a.score for a in answers) / len(answers),
         2,
     )
 
-    db = SessionLocal()
-    try:
-        result = (
-            db.query(InterviewResult)
-            .filter(
-                InterviewResult.user_id == user_id,
-                InterviewResult.interview_id == session["interview_id"],
-            )
-            .first()
+    result = (
+        db.query(InterviewResult)
+        .filter(
+            InterviewResult.user_id == user_id,
+            InterviewResult.interview_id == session.id,
         )
+        .first()
+    )
 
-        if result is None:
-            result = InterviewResult(
-                user_id=user_id,
-                interview_id=session["interview_id"],
-            )
-            db.add(result)
+    if result is None:
+        result = InterviewResult(
+            user_id=user_id,
+            interview_id=session.id,
+        )
+        db.add(result)
 
-        result.company = session["company"]
-        result.target_role = session["target_role"]
-        result.interview_type = session["interview_type"]
-        result.difficulty = session["difficulty"]
-        result.completed_questions = len(evaluations)
-        result.total_questions = len(session["questions"])
-        result.average_score = average_score
-        result.performance_level = _get_performance_level(average_score)
+    questions = json.loads(session.questions_json)
 
-        db.commit()
-    finally:
-        db.close()
+    result.company = session.company
+    result.target_role = session.target_role
+    result.interview_type = session.interview_type
+    result.difficulty = session.difficulty
+    result.completed_questions = len(answers)
+    result.total_questions = len(questions)
+    result.average_score = average_score
+    result.performance_level = _get_performance_level(average_score)
 
+    db.commit()
 
-# ============================================================
-# GET NEXT QUESTION
-# ============================================================
 
 def get_next_question(
+    db: Session,
     interview_id: int,
-):
+) -> Optional[InterviewQuestion]:
     """
-    Return the next unanswered question.
-
-    Returns None when interview is complete.
+    Return the next unanswered question for an interview session.
     """
-
-    session = INTERVIEW_SESSIONS.get(
-        interview_id
-    )
+    session = get_interview_session(db, interview_id)
 
     if session is None:
         return None
 
-    current_index = session["current_index"]
+    questions = json.loads(session.questions_json)
 
-    questions = session["questions"]
-
-    if current_index >= len(questions):
+    if session.current_index >= len(questions):
         return None
 
-    return questions[current_index]
+    q_data = questions[session.current_index]
 
+    return InterviewQuestion(
+        question_id=q_data["question_id"],
+        question=q_data["question"],
+        category=q_data["category"],
+        difficulty=q_data["difficulty"],
+        company=q_data.get("company"),
+    )
 
-# ============================================================
-# EVALUATE ANSWER
-# ============================================================
 
 def evaluate_answer(
     question: str,
@@ -881,14 +889,7 @@ def evaluate_answer(
 ) -> InterviewEvaluation:
     """
     Evaluate an interview answer using the AI evaluator.
-
-    Gemini is used when configured.
-
-    If Gemini is unavailable or no API key is configured,
-    the AI evaluator automatically uses its fallback
-    rule-based evaluation.
     """
-
     return evaluator.evaluate(
         question=question,
         answer=answer,
@@ -898,54 +899,45 @@ def evaluate_answer(
     )
 
 
-# ============================================================
-# INTERVIEW SUMMARY
-# ============================================================
-
 def get_interview_summary(
+    db: Session,
     interview_id: int,
 ):
     """
-    Calculate the current/final interview summary.
+    Calculate current/final interview summary from persistent session records.
     """
-
-    session = INTERVIEW_SESSIONS.get(
-        interview_id
-    )
+    session = get_interview_session(db, interview_id)
 
     if session is None:
         return None
 
-    evaluations = session["evaluations"]
+    answers = (
+        db.query(InterviewQuestionAnswer)
+        .filter(InterviewQuestionAnswer.session_id == session.id)
+        .all()
+    )
 
-    if evaluations:
+    completed = len(answers)
+    questions = json.loads(session.questions_json)
+    total = len(questions)
+
+    if answers:
         average_score = round(
-            sum(
-                evaluation.score
-                for evaluation in evaluations
-            )
-            / len(evaluations),
+            sum(a.score for a in answers) / completed,
             2,
         )
-
     else:
         average_score = 0.0
 
-    completed = len(evaluations)
-
-    if completed > 0 and completed >= len(session["questions"]):
-        _persist_interview_result(session)
-
-    total = len(
-        session["questions"]
-    )
+    if completed > 0 and completed >= total:
+        _persist_interview_result(db, session)
 
     return {
-        "interview_id": interview_id,
-        "company": session["company"],
-        "target_role": session["target_role"],
-        "interview_type": session["interview_type"],
-        "difficulty": session["difficulty"],
+        "interview_id": session.id,
+        "company": session.company,
+        "target_role": session.target_role,
+        "interview_type": session.interview_type,
+        "difficulty": session.difficulty,
         "completed_questions": completed,
         "total_questions": total,
         "average_score": average_score,

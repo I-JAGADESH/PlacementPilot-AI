@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy import Column, DateTime, Integer, String
+from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
 from app.database.database import Base
@@ -45,6 +46,48 @@ class User(Base):
         server_default=func.now(),
         onupdate=func.now(),
         nullable=False,
+    )
+
+    profile = relationship(
+        "StudentProfile",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+    assessment_attempts = relationship(
+        "AssessmentAttempt",
+        cascade="all, delete-orphan",
+    )
+
+    interview_results = relationship(
+        "InterviewResult",
+        cascade="all, delete-orphan",
+    )
+
+    interview_sessions = relationship(
+        "InterviewSession",
+        cascade="all, delete-orphan",
+    )
+
+    ats_results = relationship(
+        "ATSResult",
+        cascade="all, delete-orphan",
+    )
+
+    training_progress = relationship(
+        "TrainingProgress",
+        cascade="all, delete-orphan",
+    )
+
+    github_account = relationship(
+        "GitHubAccount",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+    oauth_states = relationship(
+        "OAuthState",
+        cascade="all, delete-orphan",
     )
 
     def __repr__(self):

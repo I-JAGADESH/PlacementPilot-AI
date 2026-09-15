@@ -1,34 +1,25 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.assessment.models import AssessmentAttempt
+from app.ats.models import ATSResult
 from app.core.security import get_current_user
-from app.database.database import SessionLocal
+from app.database.database import get_db
+from app.interview.models import InterviewResult
 from app.ml.readiness import readiness_model
 from app.profile.models import StudentProfile
 from app.training.models import TrainingProgress
-from app.interview.models import InterviewResult
-from app.ats.models import ATSResult
 
 
 router = APIRouter(
     prefix="/api/v1/readiness",
     tags=["Placement Readiness"],
 )
-
-
-def get_db():
-    db = SessionLocal()
-
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 def _average(
@@ -206,15 +197,14 @@ def _calculate_certification_score(
     )
 
 
-
 def _calculate_ats_score(
     db: Session,
     user_id: int,
-) -> float:
+) -> Optional[float]:
     """
     Get the latest persisted ATS score for the authenticated user.
+    Returns None if the user has not completed an ATS resume scan.
     """
-
     result = (
         db.query(ATSResult)
         .filter(
@@ -229,7 +219,7 @@ def _calculate_ats_score(
     )
 
     if result is None:
-        return 50.0
+        return None
 
     return round(
         _clamp(
@@ -242,11 +232,11 @@ def _calculate_ats_score(
 def _calculate_interview_score(
     db: Session,
     user_id: int,
-) -> float:
+) -> Optional[float]:
     """
     Get the latest completed interview score for the authenticated user.
+    Returns None if the user has not completed a mock interview.
     """
-
     result = (
         db.query(InterviewResult)
         .filter(
@@ -262,7 +252,7 @@ def _calculate_interview_score(
     )
 
     if result is None:
-        return 50.0
+        return None
 
     return round(
         _clamp(
@@ -324,8 +314,6 @@ def _calculate_assessment_score(
         return 0.0
 
     latest_scores = []
-
-    # Use the latest completed attempt for each skill.
     seen_skills = set()
 
     for attempt in attempts:
@@ -567,10 +555,22 @@ def _build_recommendations(
     priority_gaps: List[Dict[str, Any]],
     training_score: float,
     assessment_score: float,
+    ats_attempted: bool,
+    interview_attempted: bool,
 ) -> List[str]:
     recommendations = list(
         prediction_recommendations
     )
+
+    if not ats_attempted:
+        recommendations.append(
+            "Upload your resume to ATS Analyzer to unlock resume readiness feedback."
+        )
+
+    if not interview_attempted:
+        recommendations.append(
+            "Complete a mock interview to evaluate your interview readiness."
+        )
 
     if training_score > 0 and training_score < 70:
         recommendations.append(
@@ -605,12 +605,12 @@ def _build_recommendations(
                 "Build or improve projects with clear technologies and measurable outcomes."
             )
 
-        elif area == "Resume / ATS":
+        elif area == "Resume / ATS" and ats_attempted:
             recommendations.append(
                 "Improve resume keywords and project evidence for the target role."
             )
 
-        elif area == "Interview preparation":
+        elif area == "Interview preparation" and interview_attempted:
             recommendations.append(
                 "Complete technical and behavioral mock interviews."
             )
@@ -640,6 +640,7 @@ def get_placement_readiness(
     Calculate placement readiness using
     the authenticated student's real profile,
     training progress and completed assessments.
+    No hardcoded defaults are used for unattempted modules.
     """
 
     user_id = getattr(
@@ -715,18 +716,15 @@ def get_placement_readiness(
         0.0,
     )
 
-    # Existing profile skill score.
     profile_skill_score = _calculate_skill_score(
         profile
     )
 
-    # Dynamic training progress.
     training_score = _calculate_training_score(
         db=db,
         user_id=int(user_id),
     )
 
-    # Dynamic assessment score.
     assessment_score = _calculate_assessment_score(
         db=db,
         user_id=int(user_id),
@@ -737,7 +735,6 @@ def get_placement_readiness(
         user_id=int(user_id),
     )
 
-    # Combine profile skills with actual learning evidence.
     skill_score = _calculate_dynamic_skill_score(
         profile=profile,
         assessment_score=assessment_score,
@@ -759,39 +756,22 @@ def get_placement_readiness(
         )
     )
 
-    # Use the latest persisted ATS result when available.
-    # Fall back to the existing profile value / neutral baseline
-    # until the student has completed an ATS analysis.
+    # Real persisted module results. Explicit None if unattempted.
     ats_result_score = _calculate_ats_score(
         db=db,
         user_id=int(user_id),
     )
 
-    if ats_result_score == 50.0:
-        ats_score = _get_value(
-            profile,
-            ["ats_score"],
-            50.0,
-        )
-    else:
-        ats_score = ats_result_score
+    ats_attempted = ats_result_score is not None
+    ats_score = ats_result_score if ats_attempted else 0.0
 
-    # Use the latest persisted interview result when available.
-    # Fall back to the existing profile value / neutral baseline
-    # until the student completes an interview.
     interview_result_score = _calculate_interview_score(
         db=db,
         user_id=int(user_id),
     )
 
-    if interview_result_score == 50.0:
-        interview_score = _get_value(
-            profile,
-            ["interview_score"],
-            50.0,
-        )
-    else:
-        interview_score = interview_result_score
+    interview_attempted = interview_result_score is not None
+    interview_score = interview_result_score if interview_attempted else 0.0
 
     prediction = readiness_model.predict(
         cgpa=cgpa,
@@ -825,6 +805,8 @@ def get_placement_readiness(
         priority_gaps,
         training_score,
         assessment_score,
+        ats_attempted,
+        interview_attempted,
     )
 
     target_role = getattr(
@@ -860,10 +842,8 @@ def get_placement_readiness(
                 2,
             ),
 
-            "resume_score": round(
-                ats_score,
-                2,
-            ),
+            "resume_score": ats_result_score,
+            "resume_attempted": ats_attempted,
 
             "project_score": round(
                 project_score,
@@ -880,10 +860,8 @@ def get_placement_readiness(
                 2,
             ),
 
-            "interview_score": round(
-                interview_score,
-                2,
-            ),
+            "interview_score": interview_result_score,
+            "interview_attempted": interview_attempted,
 
             "academic_score": round(
                 min(

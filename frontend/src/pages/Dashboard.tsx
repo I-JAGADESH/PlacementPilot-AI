@@ -126,11 +126,13 @@ interface ReadinessResponse {
   breakdown: {
     technical_score: number;
     dsa_score: number;
-    resume_score: number;
+    resume_score: number | null;
+    resume_attempted?: boolean;
     project_score: number;
     communication_score: number;
     aptitude_score: number;
-    interview_score: number;
+    interview_score: number | null;
+    interview_attempted?: boolean;
     academic_score: number;
     attendance_score: number;
     certification_score: number;

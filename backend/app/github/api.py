@@ -1,13 +1,14 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import secrets
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
-from app.database.database import SessionLocal
+from app.database.database import get_db
+from app.github.models import GitHubAccount, OAuthState
 from app.github.service import (
     build_authorization_url,
     calculate_repository_statistics,
@@ -25,20 +26,6 @@ router = APIRouter(
     prefix="/api/v1/github",
     tags=["GitHub Integration"],
 )
-
-
-# Temporary OAuth state storage for local development.
-# The state is tied to the authenticated PlacementPilot user.
-OAUTH_STATES: Dict[str, int] = {}
-
-
-def get_db():
-    db = SessionLocal()
-
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 def _get_user_id(current_user: Any) -> int:
@@ -73,9 +60,6 @@ def _get_user_id(current_user: Any) -> int:
 def _get_current_user_dependency():
     """
     Resolve the project's existing authentication dependency.
-
-    The project already exposes get_current_user through the auth API.
-    Importing it here keeps GitHub protected by the same JWT system.
     """
     try:
         from app.api.auth import get_current_user
@@ -106,14 +90,25 @@ def require_current_user():
 @router.get("/connect")
 def connect_github(
     current_user: Any = Depends(require_current_user()),
+    db: Session = Depends(get_db),
 ):
     """
     Start GitHub OAuth authorization.
+    Persists state token in the database for secure multi-user verification.
     """
     user_id = _get_user_id(current_user)
 
     state = secrets.token_urlsafe(32)
-    OAUTH_STATES[state] = user_id
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=15)
+
+    oauth_state = OAuthState(
+        state=state,
+        user_id=user_id,
+        expires_at=expires_at,
+    )
+
+    db.add(oauth_state)
+    db.commit()
 
     authorization_url = build_authorization_url(state)
 
@@ -131,16 +126,36 @@ def github_callback(
 ):
     """
     GitHub OAuth callback.
-
-    GitHub redirects the browser here after authorization.
+    Validates state token against persistent database storage.
+    NEVER returns or exposes access_token to the frontend.
     """
-    user_id = OAUTH_STATES.pop(state, None)
+    oauth_state = (
+        db.query(OAuthState)
+        .filter(OAuthState.state == state)
+        .first()
+    )
 
-    if user_id is None:
+    if oauth_state is None or (
+        oauth_state.expires_at.tzinfo is None
+        and oauth_state.expires_at < datetime.now()
+    ) or (
+        oauth_state.expires_at.tzinfo is not None
+        and oauth_state.expires_at < datetime.now(timezone.utc)
+    ):
+        if oauth_state:
+            db.delete(oauth_state)
+            db.commit()
+
         raise HTTPException(
             status_code=400,
             detail="Invalid or expired OAuth state.",
         )
+
+    user_id = oauth_state.user_id
+
+    # Clean up state token after single-use consuming.
+    db.delete(oauth_state)
+    db.commit()
 
     try:
         access_token = exchange_code_for_token(code)
@@ -194,7 +209,7 @@ def sync_github(
     db: Session = Depends(get_db),
 ):
     """
-    Re-fetch GitHub profile and repository information.
+    Re-fetch GitHub profile and repository information for the authenticated user.
     """
     user_id = _get_user_id(current_user)
 
@@ -234,7 +249,8 @@ def github_status(
     db: Session = Depends(get_db),
 ):
     """
-    Return the current GitHub connection status.
+    Return the current GitHub connection status for the authenticated user.
+    NEVER returns or exposes access_token.
     """
     user_id = _get_user_id(current_user)
 
@@ -274,7 +290,7 @@ def github_disconnect(
     db: Session = Depends(get_db),
 ):
     """
-    Disconnect the user's GitHub account.
+    Disconnect the authenticated user's GitHub account.
     """
     user_id = _get_user_id(current_user)
 

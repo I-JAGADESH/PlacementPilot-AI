@@ -1,4 +1,4 @@
-﻿from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,7 +10,9 @@ from app.database.database import Base, engine
 # DATABASE MODELS
 # ============================================================
 
+import app.models.user
 import app.database.models
+import app.profile.models
 import app.training.models
 import app.assessment.models
 import app.interview.models

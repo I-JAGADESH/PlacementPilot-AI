@@ -1,4 +1,4 @@
-﻿from sqlalchemy import Column, DateTime, Integer, String, Text, func
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, Text, func
 
 from app.database.database import Base
 
@@ -7,7 +7,13 @@ class GitHubAccount(Base):
     __tablename__ = "github_accounts"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, nullable=False, unique=True, index=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
 
     github_user_id = Column(String(100), nullable=False, unique=True, index=True)
     username = Column(String(100), nullable=False)
@@ -30,5 +36,26 @@ class GitHubAccount(Base):
         DateTime(timezone=True),
         server_default=func.now(),
         onupdate=func.now(),
+        nullable=False,
+    )
+
+
+class OAuthState(Base):
+    __tablename__ = "oauth_states"
+
+    state = Column(String(100), primary_key=True, index=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    expires_at = Column(
+        DateTime(timezone=True),
         nullable=False,
     )
