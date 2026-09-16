@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 import json
 
 from google import genai
@@ -8,37 +8,28 @@ from app.core.config import settings
 from app.interview.schemas import InterviewEvaluation
 
 
-# ============================================================
-# AI INTERVIEW EVALUATOR
-# ============================================================
-
 class AIInterviewEvaluator:
     """
-    AI-powered interview answer evaluator.
-
-    Gemini is used when configured.
-    If Gemini fails or times out, the application
-    automatically falls back to the rule-based evaluator.
+    AI-powered interview answer evaluator supporting objective scoring,
+    technical gap identification, communication feedback, missed concepts,
+    and fallback rule-based evaluation.
     """
 
     def __init__(self):
         self.client = None
 
-        if settings.GEMINI_API_KEY:
+        if (
+            settings.GEMINI_API_KEY
+            and settings.GEMINI_API_KEY != "placeholder"
+            and not settings.GEMINI_API_KEY.startswith("your-")
+        ):
             try:
                 self.client = genai.Client(
                     api_key=settings.GEMINI_API_KEY,
                 )
-
             except Exception as e:
-                print(
-                    "Gemini client initialization failed:",
-                    repr(e),
-                )
+                print("Gemini client initialization failed:", repr(e))
 
-    # ========================================================
-    # PUBLIC EVALUATION
-    # ========================================================
 
     def evaluate(
         self,
@@ -46,37 +37,26 @@ class AIInterviewEvaluator:
         answer: str,
         category: str,
         company: Optional[str] = None,
-        difficulty: str = "medium",
+        difficulty: str = "Medium",
+        question_type: str = "short_answer",
+        rubric: Optional[str] = None,
     ) -> InterviewEvaluation:
-
-        # ----------------------------------------------------
-        # Empty answer
-        # ----------------------------------------------------
 
         if not answer.strip():
             return InterviewEvaluation(
-                score=0,
+                score=0.0,
+                technical_score=0.0,
+                communication_score=0.0,
                 strengths=[],
-                weaknesses=[
-                    "No answer was provided."
-                ],
-                feedback=(
-                    "Please provide an answer "
-                    "to the interview question."
-                ),
-                ideal_answer=(
-                    "A strong answer should directly "
-                    "address the question and explain "
-                    "the concept clearly."
-                ),
+                weaknesses=["No answer was provided."],
+                technical_gaps=["Candidate skipped the question."],
+                communication_feedback=["No verbal or written response was submitted."],
+                missed_concepts=["All required concepts were omitted."],
+                feedback="Please provide an answer to the interview question.",
+                ideal_answer="A strong answer should directly address the question, provide technical depth, and cite practical examples.",
             )
 
-        # ----------------------------------------------------
-        # Gemini
-        # ----------------------------------------------------
-
         if self.client is not None:
-
             try:
                 return self._evaluate_with_gemini(
                     question=question,
@@ -84,34 +64,20 @@ class AIInterviewEvaluator:
                     category=category,
                     company=company,
                     difficulty=difficulty,
+                    question_type=question_type,
+                    rubric=rubric,
                 )
-
             except Exception as e:
-
-                # Keep the interview alive even if
-                # Gemini is temporarily unavailable.
-                print(
-                    "Gemini evaluation failed. "
-                    "Using fallback evaluator."
-                )
-                print(
-                    "Reason:",
-                    repr(e),
-                )
-
-        # ----------------------------------------------------
-        # Fallback
-        # ----------------------------------------------------
+                print("Gemini evaluation failed. Using rule-based fallback evaluator. Reason:", repr(e))
 
         return self._fallback_evaluation(
             question=question,
             answer=answer,
             category=category,
+            difficulty=difficulty,
+            question_type=question_type,
+            rubric=rubric,
         )
-
-    # ========================================================
-    # GEMINI EVALUATION
-    # ========================================================
 
     def _evaluate_with_gemini(
         self,
@@ -120,79 +86,43 @@ class AIInterviewEvaluator:
         category: str,
         company: Optional[str],
         difficulty: str,
+        question_type: str,
+        rubric: Optional[str],
     ) -> InterviewEvaluation:
 
         company_name = company or "Generic"
+        rubric_text = rubric or "Evaluate based on technical correctness, clarity, and depth."
 
         prompt = f"""
-You are an expert technical interviewer conducting
-a placement interview.
+You are an expert technical interviewer conducting a placement interview for {company_name}.
 
-Evaluate the candidate's answer objectively.
+Evaluate the candidate's answer strictly and objectively against the rubric.
 
-INTERVIEW DETAILS
+INTERVIEW DETAILS:
+Company: {company_name}
+Category: {category}
+Difficulty: {difficulty}
+Question Type: {question_type}
+Evaluation Rubric: {rubric_text}
 
-Company:
-{company_name}
-
-Category:
-{category}
-
-Difficulty:
-{difficulty}
-
-QUESTION
-
+QUESTION:
 {question}
 
-CANDIDATE ANSWER
-
+CANDIDATE ANSWER:
 {answer}
 
-EVALUATION CRITERIA
-
-Evaluate based on:
-
-1. Technical correctness
-2. Relevance
-3. Completeness
-4. Clarity
-5. Reasoning
-6. Practical examples
-7. Depth appropriate for the difficulty
-
-SCORING
-
-0-20   = Completely incorrect or irrelevant
-21-40  = Major gaps
-41-60  = Basic understanding
-61-75  = Good answer with some gaps
-76-90  = Strong answer
-91-100 = Excellent interview-level answer
-
-Return a JSON object containing:
-
-score
-strengths
-weaknesses
-feedback
-ideal_answer
-
-Rules:
-
-- score must be between 0 and 100.
-- strengths must be a JSON array of strings.
-- weaknesses must be a JSON array of strings.
-- feedback must be a concise explanation.
-- ideal_answer must be technically correct.
-- Do not reward unnecessary length.
-- Focus on technical correctness.
-- Include a practical example in ideal_answer when appropriate.
+RETURN A JSON OBJECT WITH EXACTLY THESE KEYS:
+- score: float (0-100)
+- technical_score: float (0-100)
+- communication_score: float (0-100)
+- strengths: list of strings
+- weaknesses: list of strings
+- technical_gaps: list of strings
+- communication_feedback: list of strings
+- missed_concepts: list of strings
+- feedback: string explanation
+- ideal_answer: string with ideal response
 """
-
-        # ----------------------------------------------------
-        # Gemini request
-        # ----------------------------------------------------
 
         response = self.client.models.generate_content(
             model=settings.GEMINI_MODEL,
@@ -203,285 +133,98 @@ Rules:
             ),
         )
 
-        # ----------------------------------------------------
-        # Read response
-        # ----------------------------------------------------
-
         text = response.text.strip()
-
         if not text:
-            raise ValueError(
-                "Gemini returned an empty response."
-            )
-
-        # ----------------------------------------------------
-        # Parse JSON
-        # ----------------------------------------------------
+            raise ValueError("Gemini returned an empty response.")
 
         data = json.loads(text)
 
-        # ----------------------------------------------------
-        # Score
-        # ----------------------------------------------------
-
-        score = float(
-            data.get("score", 0)
-        )
-
-        score = max(
-            0,
-            min(
-                100,
-                score,
-            ),
-        )
-
-        # ----------------------------------------------------
-        # Strengths
-        # ----------------------------------------------------
-
-        strengths = data.get(
-            "strengths",
-            [],
-        )
-
-        if not isinstance(strengths, list):
-            strengths = [
-                str(strengths)
-            ]
-
-        strengths = [
-            str(item)
-            for item in strengths
-        ]
-
-        # ----------------------------------------------------
-        # Weaknesses
-        # ----------------------------------------------------
-
-        weaknesses = data.get(
-            "weaknesses",
-            [],
-        )
-
-        if not isinstance(weaknesses, list):
-            weaknesses = [
-                str(weaknesses)
-            ]
-
-        weaknesses = [
-            str(item)
-            for item in weaknesses
-        ]
-
-        # ----------------------------------------------------
-        # Feedback
-        # ----------------------------------------------------
-
-        feedback = str(
-            data.get(
-                "feedback",
-                "The answer was evaluated.",
-            )
-        )
-
-        # ----------------------------------------------------
-        # Ideal answer
-        # ----------------------------------------------------
-
-        ideal_answer = str(
-            data.get(
-                "ideal_answer",
-                (
-                    "A strong answer should directly "
-                    "address the question, explain the "
-                    "concept clearly, provide reasoning, "
-                    "and include an example when appropriate."
-                ),
-            )
-        )
-
-        # ----------------------------------------------------
-        # Return evaluation
-        # ----------------------------------------------------
+        score = max(0.0, min(100.0, float(data.get("score", 50.0))))
+        tech_score = max(0.0, min(100.0, float(data.get("technical_score", score))))
+        comm_score = max(0.0, min(100.0, float(data.get("communication_score", score))))
 
         return InterviewEvaluation(
             score=round(score, 2),
-            strengths=strengths,
-            weaknesses=weaknesses,
-            feedback=feedback,
-            ideal_answer=ideal_answer,
+            technical_score=round(tech_score, 2),
+            communication_score=round(comm_score, 2),
+            strengths=[str(s) for s in data.get("strengths", [])],
+            weaknesses=[str(w) for w in data.get("weaknesses", [])],
+            technical_gaps=[str(t) for t in data.get("technical_gaps", [])],
+            communication_feedback=[str(c) for c in data.get("communication_feedback", [])],
+            missed_concepts=[str(m) for m in data.get("missed_concepts", [])],
+            feedback=str(data.get("feedback", "Evaluation complete.")),
+            ideal_answer=str(data.get("ideal_answer", "Standard comprehensive response.")),
         )
-
-    # ========================================================
-    # FALLBACK EVALUATOR
-    # ========================================================
 
     def _fallback_evaluation(
         self,
         question: str,
         answer: str,
         category: str,
+        difficulty: str = "Medium",
+        question_type: str = "short_answer",
+        rubric: Optional[str] = None,
     ) -> InterviewEvaluation:
+        answer_clean = answer.strip()
+        word_count = len(answer_clean.split())
 
-        answer = answer.strip()
-
-        word_count = len(
-            answer.split()
-        )
-
-        score = 40.0
-
-        strengths = []
-        weaknesses = []
-
-        # ----------------------------------------------------
-        # Answer length
-        # ----------------------------------------------------
+        base_score = 45.0
+        strengths: List[str] = []
+        weaknesses: List[str] = []
+        technical_gaps: List[str] = []
+        communication_feedback: List[str] = []
+        missed_concepts: List[str] = []
 
         if word_count >= 10:
-            score += 10
-
-        if word_count >= 25:
-            score += 10
-
-        if word_count >= 50:
-            score += 10
-
-        # ----------------------------------------------------
-        # Technical indicators
-        # ----------------------------------------------------
-
-        technical_keywords = [
-            "because",
-            "example",
-            "algorithm",
-            "complexity",
-            "implementation",
-            "advantage",
-            "disadvantage",
-            "process",
-            "method",
-            "class",
-            "object",
-            "database",
-            "function",
-            "memory",
-            "time",
-        ]
-
-        answer_lower = answer.lower()
-
-        found_keywords = [
-            keyword
-            for keyword in technical_keywords
-            if keyword in answer_lower
-        ]
-
-        if found_keywords:
-            score += 8
-
-            strengths.append(
-                "The answer includes relevant "
-                "technical explanation."
-            )
-
-        if word_count >= 15:
-            strengths.append(
-                "The answer provides reasonable detail."
-            )
-
-        if word_count >= 30:
-            strengths.append(
-                "The answer shows logical structure "
-                "or explanation."
-            )
-
-        if not strengths:
-            strengths.append(
-                "The answer addresses the question."
-            )
-
-        # ----------------------------------------------------
-        # Weaknesses
-        # ----------------------------------------------------
-
-        if word_count < 15:
-            weaknesses.append(
-                "Provide more technical details."
-            )
-
-        if word_count < 30:
-            weaknesses.append(
-                "Include a practical example "
-                "or explanation."
-            )
-
-        if not weaknesses:
-            weaknesses.append(
-                "The answer can be improved with "
-                "deeper technical reasoning."
-            )
-
-        # ----------------------------------------------------
-        # Score
-        # ----------------------------------------------------
-
-        score = min(
-            round(score, 2),
-            100,
-        )
-
-        # ----------------------------------------------------
-        # Feedback
-        # ----------------------------------------------------
-
-        if score >= 80:
-
-            feedback = (
-                "Excellent answer. You demonstrated "
-                "good understanding and provided "
-                "useful explanation."
-            )
-
-        elif score >= 65:
-
-            feedback = (
-                "Good attempt. The answer addresses "
-                "the question, but you can improve it "
-                "with more technical detail or examples."
-            )
-
+            base_score += 15.0
+            communication_feedback.append("Good response length and initial clarity.")
         else:
+            communication_feedback.append("Answer is too brief. Elaborate further with STAR method or structured technical points.")
+            weaknesses.append("Conciseness needs more substance.")
 
-            feedback = (
-                "The answer needs improvement. "
-                "Focus on explaining the concept clearly "
-                "and provide a practical example."
-            )
+        if word_count >= 35:
+            base_score += 15.0
+            strengths.append("Provides detailed explanation and context.")
 
-        # ----------------------------------------------------
-        # Ideal answer
-        # ----------------------------------------------------
+        # Keywords check for technical relevance
+        keywords = ["because", "example", "complexity", "implementation", "class", "function", "database", "algorithm", "trade-off", "architecture"]
+        found = [k for k in keywords if k in answer_clean.lower()]
+
+        if found:
+            base_score += 15.0
+            strengths.append(f"Used technical terms: {', '.join(found[:3])}.")
+        else:
+            technical_gaps.append("Missing specific technical terminology and domain depth.")
+            missed_concepts.append("Core algorithmic or architectural details.")
+
+        score = min(100.0, round(base_score, 2))
+        tech_score = score
+        comm_score = min(100.0, round(score + (10.0 if word_count >= 20 else -10.0), 2))
+
+        if score >= 75:
+            feedback = "Strong attempt! You demonstrated solid understanding and clear communication."
+        elif score >= 55:
+            feedback = "Satisfactory answer, but you can strengthen it by citing exact trade-offs and concrete examples."
+        else:
+            feedback = "Needs improvement. Focus on technical accuracy, edge cases, and structured delivery."
 
         ideal_answer = (
-            "A strong answer should directly address "
-            "the question, explain the key concept clearly, "
-            "provide relevant reasoning, and include "
-            "a practical example when appropriate."
+            "A strong interview response should clearly state the core concept, explain how it works under the hood, "
+            "highlight key trade-offs (time/space complexity or system bottlenecks), and cite a real-world project example."
         )
 
         return InterviewEvaluation(
             score=score,
-            strengths=strengths,
-            weaknesses=weaknesses,
+            technical_score=tech_score,
+            communication_score=comm_score,
+            strengths=strengths or ["Addressed the question directly."],
+            weaknesses=weaknesses or ["Could provide deeper architectural details."],
+            technical_gaps=technical_gaps or ["Minor technical specifics missing."],
+            communication_feedback=communication_feedback,
+            missed_concepts=missed_concepts or ["Advanced edge case considerations."],
             feedback=feedback,
             ideal_answer=ideal_answer,
         )
 
-
-# ============================================================
-# SHARED EVALUATOR INSTANCE
-# ============================================================
 
 evaluator = AIInterviewEvaluator()

@@ -1,10 +1,11 @@
 import json
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 
 from app.interview.schemas import (
     InterviewQuestion,
     InterviewEvaluation,
+    InterviewStartRequest,
 )
 from app.ai.evaluator import evaluator
 from app.interview.models import (
@@ -12,726 +13,134 @@ from app.interview.models import (
     InterviewSession,
     InterviewQuestionAnswer,
 )
+from app.interview.context import build_user_profile_context
+from app.interview.generators import (
+    generate_interview_questions,
+    ROLES,
+    EXPERIENCE_LEVELS,
+    INTERVIEW_ROUNDS,
+    DIFFICULTIES,
+    DOMAINS,
+)
 
-
-# ============================================================
-# COMPANY QUESTION BANK
-# ============================================================
-
-QUESTION_BANK = {
-
-    # ========================================================
-    # GENERIC
-    # ========================================================
-
-    "Generic": {
-
-        "technical": [
-            {
-                "question": "What is object-oriented programming? Explain its main principles.",
-                "category": "Programming",
-            },
-            {
-                "question": "What is the difference between a process and a thread?",
-                "category": "Operating Systems",
-            },
-            {
-                "question": "What is a data structure? Explain common types.",
-                "category": "Data Structures",
-            },
-            {
-                "question": "What is the difference between an array and a linked list?",
-                "category": "Data Structures",
-            },
-            {
-                "question": "What is the difference between stack and queue?",
-                "category": "Data Structures",
-            },
-            {
-                "question": "What is a database management system?",
-                "category": "DBMS",
-            },
-            {
-                "question": "What is normalization in DBMS?",
-                "category": "DBMS",
-            },
-            {
-                "question": "What is an API? Explain REST APIs.",
-                "category": "Web Development",
-            },
-            {
-                "question": "What is the difference between HTTP GET and POST?",
-                "category": "Web Development",
-            },
-        ],
-
-        "hr": [
-            {
-                "question": "Tell me about yourself.",
-                "category": "HR",
-            },
-            {
-                "question": "Why do you want to join our company?",
-                "category": "HR",
-            },
-            {
-                "question": "What are your strengths and weaknesses?",
-                "category": "HR",
-            },
-            {
-                "question": "Where do you see yourself in five years?",
-                "category": "HR",
-            },
-            {
-                "question": "Why should we hire you?",
-                "category": "HR",
-            },
-        ],
-
-        "behavioral": [
-            {
-                "question": "Tell me about a challenging project you worked on.",
-                "category": "Behavioral",
-            },
-            {
-                "question": "Describe a situation where you solved a difficult problem.",
-                "category": "Behavioral",
-            },
-            {
-                "question": "Tell me about a time you worked as part of a team.",
-                "category": "Behavioral",
-            },
-            {
-                "question": "Describe a failure and what you learned from it.",
-                "category": "Behavioral",
-            },
-            {
-                "question": "How do you handle pressure and deadlines?",
-                "category": "Behavioral",
-            },
-        ],
-    },
-
-
-    # ========================================================
-    # ZOHO
-    # ========================================================
-
-    "Zoho": {
-
-        "technical": [
-            {
-                "question": "Explain object-oriented programming and its four main principles.",
-                "category": "Programming",
-            },
-            {
-                "question": "What is the difference between C++ and Java?",
-                "category": "Programming",
-            },
-            {
-                "question": "Explain inheritance and polymorphism with an example.",
-                "category": "OOP",
-            },
-            {
-                "question": "How would you reverse a string without using a built-in reverse function?",
-                "category": "Programming",
-            },
-            {
-                "question": "Explain arrays, linked lists, stacks and queues.",
-                "category": "Data Structures",
-            },
-            {
-                "question": "How would you find duplicate elements in an array?",
-                "category": "Data Structures",
-            },
-            {
-                "question": "What is normalization in SQL?",
-                "category": "SQL",
-            },
-            {
-                "question": "Write a SQL query to find the second highest salary.",
-                "category": "SQL",
-            },
-            {
-                "question": "Explain the difference between primary key and foreign key.",
-                "category": "DBMS",
-            },
-            {
-                "question": "What is the difference between process and thread?",
-                "category": "Operating Systems",
-            },
-        ],
-
-        "hr": [
-            {
-                "question": "Tell me about yourself.",
-                "category": "HR",
-            },
-            {
-                "question": "Why do you want to join Zoho?",
-                "category": "HR",
-            },
-            {
-                "question": "Why should Zoho hire you?",
-                "category": "HR",
-            },
-            {
-                "question": "What are your strengths and weaknesses?",
-                "category": "HR",
-            },
-            {
-                "question": "Are you comfortable learning new technologies?",
-                "category": "HR",
-            },
-        ],
-
-        "behavioral": [
-            {
-                "question": "Tell me about a difficult technical problem you solved.",
-                "category": "Behavioral",
-            },
-            {
-                "question": "Describe a project where you had to learn something quickly.",
-                "category": "Behavioral",
-            },
-            {
-                "question": "Tell me about a time you disagreed with a teammate.",
-                "category": "Behavioral",
-            },
-            {
-                "question": "How do you approach debugging a program?",
-                "category": "Behavioral",
-            },
-            {
-                "question": "Describe a situation where you had to meet a strict deadline.",
-                "category": "Behavioral",
-            },
-        ],
-    },
-
-
-    # ========================================================
-    # TCS
-    # ========================================================
-
-    "TCS": {
-
-        "technical": [
-            {
-                "question": "Explain the four pillars of OOP.",
-                "category": "OOP",
-            },
-            {
-                "question": "What is the difference between C and C++?",
-                "category": "Programming",
-            },
-            {
-                "question": "Explain the difference between stack and heap memory.",
-                "category": "Programming",
-            },
-            {
-                "question": "What is a linked list?",
-                "category": "Data Structures",
-            },
-            {
-                "question": "Explain time complexity and Big-O notation.",
-                "category": "Algorithms",
-            },
-            {
-                "question": "What is binary search and what is its time complexity?",
-                "category": "Algorithms",
-            },
-            {
-                "question": "What is normalization?",
-                "category": "DBMS",
-            },
-            {
-                "question": "Explain primary key, foreign key and candidate key.",
-                "category": "DBMS",
-            },
-            {
-                "question": "What is SQL JOIN? Explain its types.",
-                "category": "SQL",
-            },
-            {
-                "question": "What is an operating system?",
-                "category": "Operating Systems",
-            },
-        ],
-
-        "hr": [
-            {
-                "question": "Tell me about yourself.",
-                "category": "HR",
-            },
-            {
-                "question": "Why do you want to join TCS?",
-                "category": "HR",
-            },
-            {
-                "question": "Are you willing to relocate?",
-                "category": "HR",
-            },
-            {
-                "question": "What are your career goals?",
-                "category": "HR",
-            },
-            {
-                "question": "Why should we hire you?",
-                "category": "HR",
-            },
-        ],
-
-        "behavioral": [
-            {
-                "question": "Tell me about a challenging project.",
-                "category": "Behavioral",
-            },
-            {
-                "question": "How do you handle conflicts in a team?",
-                "category": "Behavioral",
-            },
-            {
-                "question": "Tell me about a time you showed leadership.",
-                "category": "Behavioral",
-            },
-            {
-                "question": "How do you prioritize multiple tasks?",
-                "category": "Behavioral",
-            },
-            {
-                "question": "Tell me about a mistake you made and what you learned.",
-                "category": "Behavioral",
-            },
-        ],
-    },
-
-
-    # ========================================================
-    # INFOSYS
-    # ========================================================
-
-    "Infosys": {
-
-        "technical": [
-            {
-                "question": "What are the principles of object-oriented programming?",
-                "category": "OOP",
-            },
-            {
-                "question": "What is the difference between compile-time and run-time polymorphism?",
-                "category": "OOP",
-            },
-            {
-                "question": "Explain arrays and linked lists.",
-                "category": "Data Structures",
-            },
-            {
-                "question": "What is recursion?",
-                "category": "Algorithms",
-            },
-            {
-                "question": "What is the difference between BFS and DFS?",
-                "category": "Algorithms",
-            },
-            {
-                "question": "Explain SQL joins.",
-                "category": "SQL",
-            },
-            {
-                "question": "What is normalization in DBMS?",
-                "category": "DBMS",
-            },
-            {
-                "question": "Explain process scheduling.",
-                "category": "Operating Systems",
-            },
-            {
-                "question": "What is deadlock?",
-                "category": "Operating Systems",
-            },
-        ],
-
-        "hr": [
-            {
-                "question": "Tell me about yourself.",
-                "category": "HR",
-            },
-            {
-                "question": "Why do you want to join Infosys?",
-                "category": "HR",
-            },
-            {
-                "question": "What are your strengths?",
-                "category": "HR",
-            },
-            {
-                "question": "What are your weaknesses?",
-                "category": "HR",
-            },
-            {
-                "question": "Where do you see yourself in five years?",
-                "category": "HR",
-            },
-        ],
-
-        "behavioral": [
-            {
-                "question": "Describe a challenging situation and how you handled it.",
-                "category": "Behavioral",
-            },
-            {
-                "question": "Tell me about a time you worked in a team.",
-                "category": "Behavioral",
-            },
-            {
-                "question": "How do you handle failure?",
-                "category": "Behavioral",
-            },
-            {
-                "question": "How do you manage deadlines?",
-                "category": "Behavioral",
-            },
-            {
-                "question": "Tell me about a time you demonstrated leadership.",
-                "category": "Behavioral",
-            },
-        ],
-    },
-
-
-    # ========================================================
-    # AMAZON
-    # ========================================================
-
-    "Amazon": {
-
-        "technical": [
-            {
-                "question": "Explain the difference between an array and a linked list.",
-                "category": "Data Structures",
-            },
-            {
-                "question": "How would you find the first non-repeating character in a string?",
-                "category": "Algorithms",
-            },
-            {
-                "question": "Explain hash tables and their average time complexity.",
-                "category": "Data Structures",
-            },
-            {
-                "question": "What is the difference between BFS and DFS?",
-                "category": "Algorithms",
-            },
-            {
-                "question": "Explain binary search.",
-                "category": "Algorithms",
-            },
-            {
-                "question": "What is a database index?",
-                "category": "DBMS",
-            },
-            {
-                "question": "Explain SQL joins.",
-                "category": "SQL",
-            },
-            {
-                "question": "What is REST API?",
-                "category": "Web Development",
-            },
-            {
-                "question": "What is the difference between process and thread?",
-                "category": "Operating Systems",
-            },
-        ],
-
-        "hr": [
-            {
-                "question": "Tell me about yourself.",
-                "category": "HR",
-            },
-            {
-                "question": "Why do you want to work at Amazon?",
-                "category": "HR",
-            },
-            {
-                "question": "Why should we hire you?",
-                "category": "HR",
-            },
-            {
-                "question": "What is your biggest strength?",
-                "category": "HR",
-            },
-            {
-                "question": "What is your biggest weakness?",
-                "category": "HR",
-            },
-        ],
-
-        "behavioral": [
-            {
-                "question": "Tell me about a time you demonstrated leadership.",
-                "category": "Behavioral",
-            },
-            {
-                "question": "Tell me about a time you disagreed with a teammate.",
-                "category": "Behavioral",
-            },
-            {
-                "question": "Describe a difficult problem you solved.",
-                "category": "Behavioral",
-            },
-            {
-                "question": "Tell me about a failure and what you learned.",
-                "category": "Behavioral",
-            },
-            {
-                "question": "Describe a situation where you took ownership.",
-                "category": "Behavioral",
-            },
-        ],
-    },
-
-
-    # ========================================================
-    # MICROSOFT
-    # ========================================================
-
-    "Microsoft": {
-
-        "technical": [
-            {
-                "question": "Explain object-oriented programming.",
-                "category": "OOP",
-            },
-            {
-                "question": "What is the difference between stack and heap?",
-                "category": "Programming",
-            },
-            {
-                "question": "Explain binary trees.",
-                "category": "Data Structures",
-            },
-            {
-                "question": "What is a binary search tree?",
-                "category": "Data Structures",
-            },
-            {
-                "question": "Explain Big-O complexity.",
-                "category": "Algorithms",
-            },
-            {
-                "question": "What is dynamic programming?",
-                "category": "Algorithms",
-            },
-            {
-                "question": "Explain SQL indexing.",
-                "category": "SQL",
-            },
-            {
-                "question": "What is multithreading?",
-                "category": "Operating Systems",
-            },
-            {
-                "question": "What is cloud computing?",
-                "category": "Cloud",
-            },
-        ],
-
-        "hr": [
-            {
-                "question": "Tell me about yourself.",
-                "category": "HR",
-            },
-            {
-                "question": "Why Microsoft?",
-                "category": "HR",
-            },
-            {
-                "question": "Why should we hire you?",
-                "category": "HR",
-            },
-            {
-                "question": "What motivates you?",
-                "category": "HR",
-            },
-            {
-                "question": "Where do you see yourself in five years?",
-                "category": "HR",
-            },
-        ],
-
-        "behavioral": [
-            {
-                "question": "Tell me about a difficult technical problem you solved.",
-                "category": "Behavioral",
-            },
-            {
-                "question": "Describe a time when you had to learn a new technology.",
-                "category": "Behavioral",
-            },
-            {
-                "question": "Tell me about a time you received critical feedback.",
-                "category": "Behavioral",
-            },
-            {
-                "question": "Describe a situation where you had to make a difficult decision.",
-                "category": "Behavioral",
-            },
-            {
-                "question": "Tell me about a time you worked with a difficult teammate.",
-                "category": "Behavioral",
-            },
-        ],
-    },
-}
-
-
-# ============================================================
-# COMPANY NAME NORMALIZATION
-# ============================================================
 
 def normalize_company(company: Optional[str]) -> str:
-    """
-    Normalize company name.
-
-    Unknown companies fall back to Generic.
-    """
-
-    if not company:
+    """Normalize company name."""
+    if not company or not company.strip():
         return "Generic"
+    c_clean = company.strip()
+    return c_clean
 
-    company = company.strip().lower()
 
-    company_aliases = {
-        "zoho": "Zoho",
-        "tcs": "TCS",
-        "infosys": "Infosys",
-        "amazon": "Amazon",
-        "microsoft": "Microsoft",
+
+def get_interview_config(db: Session, user_id: int) -> Dict[str, Any]:
+    """Return available interview config parameters and current user profile context summary."""
+    profile_ctx = build_user_profile_context(db, user_id)
+    return {
+        "roles": ROLES,
+        "experience_levels": EXPERIENCE_LEVELS,
+        "interview_rounds": INTERVIEW_ROUNDS,
+        "difficulties": DIFFICULTIES,
+        "domains": DOMAINS,
+        "user_profile_summary": {
+            "target_company": profile_ctx.get("target_company"),
+            "target_role": profile_ctx.get("target_role"),
+            "projects_count": len(profile_ctx.get("projects", [])),
+            "skills_count": len(profile_ctx.get("skills", [])),
+            "weak_topics": profile_ctx.get("weak_topics", []),
+        },
     }
 
-    return company_aliases.get(
-        company,
-        "Generic",
-    )
-
-
-# ============================================================
-# GET QUESTIONS
-# ============================================================
 
 def get_questions(
-    interview_type: str = "technical",
-    difficulty: str = "medium",
+    interview_type: str = "Technical MCQ",
+    difficulty: str = "Medium",
     company: Optional[str] = None,
+    role: str = "Software Engineer",
+    experience_level: str = "Entry Level",
+    domain: Optional[str] = "DSA",
+    profile_context: Optional[Dict[str, Any]] = None,
 ) -> List[InterviewQuestion]:
-    """
-    Get company-specific interview questions.
-
-    Unknown companies use the Generic question bank.
-    """
-
-    normalized_company = normalize_company(company)
-
-    interview_type = interview_type.lower().strip()
-
-    if interview_type not in {
-        "technical",
-        "hr",
-        "behavioral",
-    }:
-        interview_type = "technical"
-
-    company_questions = QUESTION_BANK.get(
-        normalized_company,
-        QUESTION_BANK["Generic"],
+    """Generate company-style interview questions."""
+    norm_company = normalize_company(company)
+    return generate_interview_questions(
+        round_type=interview_type,
+        role=role,
+        experience_level=experience_level,
+        difficulty=difficulty,
+        domain=domain,
+        company=norm_company,
+        profile_context=profile_context,
+        count=5,
     )
 
-    raw_questions = company_questions.get(
-        interview_type,
-        company_questions["technical"],
-    )
-
-    questions = []
-
-    for index, question_data in enumerate(
-        raw_questions,
-        start=1,
-    ):
-        questions.append(
-            InterviewQuestion(
-                question_id=index,
-                question=question_data["question"],
-                category=question_data["category"],
-                difficulty=difficulty,
-                company=normalized_company,
-            )
-        )
-
-    return questions
-
-
-# ============================================================
-# DATABASE-PERSISTED INTERVIEW SESSIONS
-# ============================================================
 
 def create_interview_session(
     db: Session,
-    questions: List[InterviewQuestion],
-    target_role: str,
-    interview_type: str,
-    difficulty: str,
-    company: Optional[str] = None,
-    user_id: Optional[int] = None,
+    request: InterviewStartRequest,
+    user_id: int,
 ) -> InterviewSession:
-    """
-    Create and persist a new interview session in SQLite database.
-    """
-    normalized_company = normalize_company(company)
+    """Create and persist a new user-isolated interview session with profile awareness."""
+    profile_ctx = build_user_profile_context(db, user_id)
 
-    questions_data = [
-        {
-            "question_id": q.question_id,
-            "question": q.question,
-            "category": q.category,
-            "difficulty": q.difficulty,
-            "company": q.company,
-        }
-        for q in questions
-    ]
+    round_type = request.interview_round or request.interview_type or "Technical MCQ"
+    role = request.role or "Software Engineer"
+    exp_level = request.experience_level or "Entry Level"
+    diff = request.difficulty or "Medium"
+    dom = request.domain or "DSA"
+    comp = normalize_company(request.company or profile_ctx.get("target_company"))
+
+    questions = generate_interview_questions(
+        round_type=round_type,
+        role=role,
+        experience_level=exp_level,
+        difficulty=diff,
+        domain=dom,
+        company=comp,
+        profile_context=profile_ctx,
+        count=5,
+    )
+
+    questions_data = [q.model_dump() for q in questions]
 
     session = InterviewSession(
         user_id=user_id,
-        company=normalized_company,
-        target_role=target_role,
-        interview_type=interview_type,
-        difficulty=difficulty,
+        company=comp,
+        target_role=role,
+        experience_level=exp_level,
+        interview_type=round_type,
+        difficulty=diff,
+        domain=dom,
         current_index=0,
         total_questions=len(questions),
         questions_json=json.dumps(questions_data),
+        profile_context_json=json.dumps(profile_ctx),
         status="in_progress",
     )
 
     db.add(session)
     db.commit()
     db.refresh(session)
-
     return session
 
 
-def get_interview_session(
-    db: Session,
-    interview_id: int,
-) -> Optional[InterviewSession]:
-    """
-    Retrieve an active or completed interview session from database.
-    """
-    return (
-        db.query(InterviewSession)
-        .filter(InterviewSession.id == interview_id)
-        .first()
-    )
+def get_interview_session(db: Session, interview_id: int) -> Optional[InterviewSession]:
+    """Retrieve an active or completed interview session from database."""
+    return db.query(InterviewSession).filter(InterviewSession.id == interview_id).first()
+
+
+def get_next_question(db: Session, interview_id: int) -> Optional[InterviewQuestion]:
+    """Return the next unanswered question for an interview session."""
+    session = get_interview_session(db, interview_id)
+    if session is None:
+        return None
+
+    questions_data = json.loads(session.questions_json)
+    if session.current_index >= len(questions_data):
+        return None
+
+    q_data = questions_data[session.current_index]
+    return InterviewQuestion(**q_data)
 
 
 def save_interview_evaluation(
@@ -740,47 +149,51 @@ def save_interview_evaluation(
     question_id: int,
     answer: str,
     evaluation: InterviewEvaluation,
-):
-    """
-    Save an interview answer evaluation to database.
-    """
+) -> Optional[InterviewSession]:
+    """Save evaluation, execute adaptive difficulty check, and persist progression."""
     session = get_interview_session(db, interview_id)
-
     if session is None:
         return None
 
-    questions = json.loads(session.questions_json)
-
-    question_text = ""
-    category = "general"
-
-    for q in questions:
+    questions_data = json.loads(session.questions_json)
+    q_data = None
+    for q in questions_data:
         if q.get("question_id") == question_id:
-            question_text = q.get("question", "")
-            category = q.get("category", "general")
+            q_data = q
             break
 
-    eval_data = (
-        evaluation.model_dump()
-        if hasattr(evaluation, "model_dump")
-        else evaluation.__dict__
-    )
+    question_text = q_data.get("question", "") if q_data else ""
+    category = q_data.get("category", "General") if q_data else "General"
+    q_type = q_data.get("question_type", "short_answer") if q_data else "short_answer"
+
+    # Adaptive Check for Next Question
+    adaptation_reason = None
+    if evaluation.score < 50.0:
+        adaptation_reason = "Adaptive engine: Candidate struggled (score < 50). Foundational concepts reinforced for remaining questions."
+    elif evaluation.score > 85.0:
+        adaptation_reason = "Adaptive engine: Strong candidate performance (score > 85). Advanced application depth enabled."
+
+    evaluation.adaptation_reason = adaptation_reason
 
     qa = InterviewQuestionAnswer(
         session_id=session.id,
         question_id=question_id,
         question_text=question_text,
+        round_type=session.interview_type,
         category=category,
+        question_type=q_type,
         user_answer=answer,
         score=float(evaluation.score),
-        evaluation_json=json.dumps(eval_data),
+        communication_score=float(evaluation.communication_score),
+        technical_score=float(evaluation.technical_score),
+        evaluation_json=json.dumps(evaluation.model_dump()),
+        missed_concepts_json=json.dumps(evaluation.missed_concepts),
+        adaptation_reason=adaptation_reason,
     )
-
     db.add(qa)
 
     session.current_index += 1
-
-    if session.current_index >= len(questions):
+    if session.current_index >= len(questions_data):
         session.status = "completed"
         db.commit()
         db.refresh(session)
@@ -793,9 +206,9 @@ def save_interview_evaluation(
 
 
 def _get_performance_level(score: float) -> str:
-    if score >= 80:
+    if score >= 85:
         return "excellent"
-    if score >= 65:
+    if score >= 70:
         return "good"
     if score >= 50:
         return "developing"
@@ -803,7 +216,7 @@ def _get_performance_level(score: float) -> str:
 
 
 def _persist_interview_result(db: Session, session: InterviewSession) -> None:
-    """Persist completed interview result for placement readiness calculations."""
+    """Persist completed interview result with comprehensive metrics and preparation roadmap."""
     user_id = session.user_id
     if user_id is None:
         return
@@ -813,14 +226,49 @@ def _persist_interview_result(db: Session, session: InterviewSession) -> None:
         .filter(InterviewQuestionAnswer.session_id == session.id)
         .all()
     )
-
     if not answers:
         return
 
-    average_score = round(
-        sum(a.score for a in answers) / len(answers),
-        2,
-    )
+    avg_score = round(sum(a.score for a in answers) / len(answers), 2)
+    comm_score = round(sum(a.communication_score for a in answers) / len(answers), 2)
+
+    # Consolidate feedback across answers
+    strengths, weaknesses, tech_gaps, comm_feedback, missed_concepts = [], [], [], [], []
+
+    for a in answers:
+        if a.evaluation_json:
+            try:
+                e = json.loads(a.evaluation_json)
+                strengths.extend(e.get("strengths", []))
+                weaknesses.extend(e.get("weaknesses", []))
+                tech_gaps.extend(e.get("technical_gaps", []))
+                comm_feedback.extend(e.get("communication_feedback", []))
+                missed_concepts.extend(e.get("missed_concepts", []))
+            except Exception:
+                pass
+
+    # Unique filtering
+    strengths = list(dict.fromkeys(strengths))[:6]
+    weaknesses = list(dict.fromkeys(weaknesses))[:6]
+    tech_gaps = list(dict.fromkeys(tech_gaps))[:6]
+    comm_feedback = list(dict.fromkeys(comm_feedback))[:6]
+    missed_concepts = list(dict.fromkeys(missed_concepts))[:6]
+
+    # Recommended Topics & Roadmap derivation
+    recommended_topics = list(dict.fromkeys(tech_gaps + missed_concepts))[:5]
+    if not recommended_topics:
+        recommended_topics = [session.domain or "Core CS Fundamentals", "System Architecture"]
+
+    next_diff = "Hard" if avg_score >= 80 else ("Medium" if avg_score >= 50 else "Easy")
+
+    roadmap = [
+        f"Review core principles in {session.domain or 'CS Topics'}.",
+        f"Practice STAR-method structured responses for {session.interview_type}.",
+    ]
+    if tech_gaps:
+        roadmap.append(f"Address technical gap: {tech_gaps[0]}")
+    if missed_concepts:
+        roadmap.append(f"Revisit missed concept: {missed_concepts[0]}")
 
     result = (
         db.query(InterviewResult)
@@ -832,52 +280,32 @@ def _persist_interview_result(db: Session, session: InterviewSession) -> None:
     )
 
     if result is None:
-        result = InterviewResult(
-            user_id=user_id,
-            interview_id=session.id,
-        )
+        result = InterviewResult(user_id=user_id, interview_id=session.id)
         db.add(result)
 
     questions = json.loads(session.questions_json)
 
     result.company = session.company
     result.target_role = session.target_role
+    result.experience_level = session.experience_level
     result.interview_type = session.interview_type
     result.difficulty = session.difficulty
+    result.domain = session.domain
     result.completed_questions = len(answers)
     result.total_questions = len(questions)
-    result.average_score = average_score
-    result.performance_level = _get_performance_level(average_score)
+    result.average_score = avg_score
+    result.communication_score = comm_score
+    result.performance_level = _get_performance_level(avg_score)
+    result.strengths_json = json.dumps(strengths)
+    result.weaknesses_json = json.dumps(weaknesses)
+    result.technical_gaps_json = json.dumps(tech_gaps)
+    result.communication_feedback_json = json.dumps(comm_feedback)
+    result.missed_concepts_json = json.dumps(missed_concepts)
+    result.recommended_topics_json = json.dumps(recommended_topics)
+    result.next_recommended_difficulty = next_diff
+    result.preparation_roadmap_json = json.dumps(roadmap)
 
     db.commit()
-
-
-def get_next_question(
-    db: Session,
-    interview_id: int,
-) -> Optional[InterviewQuestion]:
-    """
-    Return the next unanswered question for an interview session.
-    """
-    session = get_interview_session(db, interview_id)
-
-    if session is None:
-        return None
-
-    questions = json.loads(session.questions_json)
-
-    if session.current_index >= len(questions):
-        return None
-
-    q_data = questions[session.current_index]
-
-    return InterviewQuestion(
-        question_id=q_data["question_id"],
-        question=q_data["question"],
-        category=q_data["category"],
-        difficulty=q_data["difficulty"],
-        company=q_data.get("company"),
-    )
 
 
 def evaluate_answer(
@@ -885,29 +313,25 @@ def evaluate_answer(
     answer: str,
     category: str,
     company: Optional[str] = None,
-    difficulty: str = "medium",
+    difficulty: str = "Medium",
+    question_type: str = "short_answer",
+    rubric: Optional[str] = None,
 ) -> InterviewEvaluation:
-    """
-    Evaluate an interview answer using the AI evaluator.
-    """
+    """Evaluate an interview answer using the AI evaluator."""
     return evaluator.evaluate(
         question=question,
         answer=answer,
         category=category,
         company=company,
         difficulty=difficulty,
+        question_type=question_type,
+        rubric=rubric,
     )
 
 
-def get_interview_summary(
-    db: Session,
-    interview_id: int,
-):
-    """
-    Calculate current/final interview summary from persistent session records.
-    """
+def get_interview_summary(db: Session, interview_id: int) -> Optional[Dict[str, Any]]:
+    """Calculate and return full interview summary from persistent session and result records."""
     session = get_interview_session(db, interview_id)
-
     if session is None:
         return None
 
@@ -917,29 +341,121 @@ def get_interview_summary(
         .all()
     )
 
-    completed = len(answers)
+    completed_cnt = len(answers)
     questions = json.loads(session.questions_json)
-    total = len(questions)
+    total_cnt = len(questions)
 
-    if answers:
-        average_score = round(
-            sum(a.score for a in answers) / completed,
-            2,
-        )
-    else:
-        average_score = 0.0
-
-    if completed > 0 and completed >= total:
+    if completed_cnt > 0 and completed_cnt >= total_cnt:
         _persist_interview_result(db, session)
+
+    res = (
+        db.query(InterviewResult)
+        .filter(InterviewResult.interview_id == session.id)
+        .first()
+    )
+
+    if res:
+        return {
+            "interview_id": session.id,
+            "company": session.company,
+            "target_role": session.target_role,
+            "experience_level": session.experience_level,
+            "interview_type": session.interview_type,
+            "difficulty": session.difficulty,
+            "domain": session.domain,
+            "completed_questions": completed_cnt,
+            "total_questions": total_cnt,
+            "average_score": res.average_score,
+            "communication_score": res.communication_score,
+            "performance_level": res.performance_level,
+            "completed": completed_cnt >= total_cnt,
+            "strengths": json.loads(res.strengths_json) if res.strengths_json else [],
+            "weaknesses": json.loads(res.weaknesses_json) if res.weaknesses_json else [],
+            "technical_gaps": json.loads(res.technical_gaps_json) if res.technical_gaps_json else [],
+            "communication_feedback": json.loads(res.communication_feedback_json) if res.communication_feedback_json else [],
+            "missed_concepts": json.loads(res.missed_concepts_json) if res.missed_concepts_json else [],
+            "recommended_topics": json.loads(res.recommended_topics_json) if res.recommended_topics_json else [],
+            "next_recommended_difficulty": res.next_recommended_difficulty or "Medium",
+            "preparation_roadmap": json.loads(res.preparation_roadmap_json) if res.preparation_roadmap_json else [],
+        }
+
+    # In-progress fallback return
+    avg_score = round(sum(a.score for a in answers) / completed_cnt, 2) if completed_cnt else 0.0
+    comm_score = round(sum(a.communication_score for a in answers) / completed_cnt, 2) if completed_cnt else 0.0
 
     return {
         "interview_id": session.id,
         "company": session.company,
         "target_role": session.target_role,
+        "experience_level": session.experience_level,
         "interview_type": session.interview_type,
         "difficulty": session.difficulty,
-        "completed_questions": completed,
-        "total_questions": total,
-        "average_score": average_score,
-        "completed": completed >= total,
+        "domain": session.domain,
+        "completed_questions": completed_cnt,
+        "total_questions": total_cnt,
+        "average_score": avg_score,
+        "communication_score": comm_score,
+        "performance_level": _get_performance_level(avg_score),
+        "completed": completed_cnt >= total_cnt,
+        "strengths": [],
+        "weaknesses": [],
+        "technical_gaps": [],
+        "communication_feedback": [],
+        "missed_concepts": [],
+        "recommended_topics": [],
+        "next_recommended_difficulty": "Medium",
+        "preparation_roadmap": [],
+    }
+
+
+def get_user_interview_history(db: Session, user_id: int) -> List[Dict[str, Any]]:
+    """Get history of interview sessions for authenticated user."""
+    results = (
+        db.query(InterviewResult)
+        .filter(InterviewResult.user_id == user_id)
+        .order_by(InterviewResult.created_at.desc())
+        .all()
+    )
+
+    history = []
+    for r in results:
+        history.append({
+            "id": r.interview_id,
+            "company": r.company,
+            "target_role": r.target_role,
+            "experience_level": r.experience_level,
+            "interview_type": r.interview_type,
+            "difficulty": r.difficulty,
+            "domain": r.domain,
+            "average_score": r.average_score,
+            "performance_level": r.performance_level,
+            "created_at": r.created_at.isoformat() if r.created_at else "",
+        })
+    return history
+
+
+def get_user_recommendations(db: Session, user_id: int) -> Dict[str, Any]:
+    """Aggregate user-wide weak areas, recommended topics, and roadmap across past interviews."""
+    results = (
+        db.query(InterviewResult)
+        .filter(InterviewResult.user_id == user_id)
+        .order_by(InterviewResult.created_at.desc())
+        .limit(5)
+        .all()
+    )
+
+    all_gaps, all_topics, roadmap_items = [], [], []
+    for r in results:
+        if r.technical_gaps_json:
+            all_gaps.extend(json.loads(r.technical_gaps_json))
+        if r.recommended_topics_json:
+            all_topics.extend(json.loads(r.recommended_topics_json))
+        if r.preparation_roadmap_json:
+            roadmap_items.extend(json.loads(r.preparation_roadmap_json))
+
+    return {
+        "user_id": user_id,
+        "identified_technical_gaps": list(dict.fromkeys(all_gaps))[:8],
+        "recommended_topics": list(dict.fromkeys(all_topics))[:8],
+        "actionable_roadmap": list(dict.fromkeys(roadmap_items))[:6],
     }

@@ -1,16 +1,15 @@
 import { useEffect, useState } from "react";
 import {
   Brain,
-  CheckCircle2,
   ChevronRight,
   Clock,
   Loader2,
-  MessageSquare,
   RotateCcw,
-  Send,
   Sparkles,
-  Target,
   Trophy,
+  BookOpen,
+  History,
+  Compass,
 } from "lucide-react";
 import api from "../services/api";
 import BackButton from "../components/BackButton";
@@ -19,23 +18,59 @@ interface InterviewQuestion {
   question_id: number;
   question: string;
   category: string;
+  difficulty: string;
+  company?: string;
+  round?: string;
+  role?: string;
+  experience_level?: string;
+  domain?: string;
+  question_type?: string;
+  options?: string[];
+  expected_answer_type?: string;
+  rubric?: string;
+  concepts_tested?: string[];
+  estimated_time?: string;
+  disclaimer?: string;
 }
 
 interface Evaluation {
   question_id: number;
   score: number;
+  technical_score?: number;
+  communication_score?: number;
   feedback: string;
+  ideal_answer: string;
   strengths?: string[];
   weaknesses?: string[];
-  suggestions?: string[];
+  technical_gaps?: string[];
+  communication_feedback?: string[];
+  missed_concepts?: string[];
+  adaptation_reason?: string;
+}
+
+interface ConfigResponse {
+  roles: string[];
+  experience_levels: string[];
+  interview_rounds: string[];
+  difficulties: string[];
+  domains: string[];
+  user_profile_summary?: {
+    target_company?: string;
+    target_role?: string;
+    projects_count?: number;
+    skills_count?: number;
+    weak_topics?: string[];
+  };
 }
 
 interface StartResponse {
   interview_id: number;
   company: string;
   target_role: string;
+  experience_level: string;
   interview_type: string;
   difficulty: string;
+  domain?: string;
   total_questions: number;
   first_question: InterviewQuestion;
 }
@@ -46,75 +81,117 @@ interface AnswerResponse {
   evaluation: Evaluation;
   next_question: InterviewQuestion | null;
   completed: boolean;
+  adaptation_notice?: string;
 }
 
 interface SummaryResponse {
   interview_id: number;
   company: string;
   target_role: string;
+  experience_level: string;
   interview_type: string;
   difficulty: string;
+  domain?: string;
   completed_questions: number;
   total_questions: number;
   average_score: number;
+  communication_score: number;
+  performance_level: string;
   completed: boolean;
+  strengths: string[];
+  weaknesses: string[];
+  technical_gaps: string[];
+  communication_feedback: string[];
+  missed_concepts: string[];
+  recommended_topics: string[];
+  next_recommended_difficulty: string;
+  preparation_roadmap: string[];
 }
 
-const companies = [
-  "Microsoft",
-  "Amazon",
-  "Zoho",
-  "TCS",
-  "Infosys",
-  "Generic",
-];
-
-const interviewTypes = [
-  "technical",
-  "behavioral",
-];
-
-const difficulties = [
-  "easy",
-  "medium",
-  "hard",
-];
+interface HistoryItem {
+  id: number;
+  company: string;
+  target_role: string;
+  experience_level: string;
+  interview_type: string;
+  difficulty: string;
+  domain?: string;
+  average_score: number;
+  performance_level: string;
+  created_at: string;
+}
 
 export default function Interview() {
-  const [company, setCompany] = useState("Microsoft");
-  const [interviewType, setInterviewType] = useState("technical");
-  const [difficulty, setDifficulty] = useState("medium");
+  const [activeTab, setActiveTab] = useState<"practice" | "history">("practice");
+  const [config, setConfig] = useState<ConfigResponse | null>(null);
 
+  // Form State
+  const [company, setCompany] = useState("Generic");
+  const [customCompany, setCustomCompany] = useState("");
+  const [role, setRole] = useState("Software Engineer");
+  const [experienceLevel, setExperienceLevel] = useState("Entry Level");
+  const [interviewRound, setInterviewRound] = useState("Technical MCQ");
+  const [difficulty, setDifficulty] = useState("Medium");
+  const [domain, setDomain] = useState("DSA");
+
+  // Interview Execution State
   const [interviewId, setInterviewId] = useState<number | null>(null);
-  const [question, setQuestion] =
-    useState<InterviewQuestion | null>(null);
-
-  // Hold the next question until the user clicks Continue.
-  // This keeps the evaluation aligned with the question just answered.
-  const [nextQuestion, setNextQuestion] =
-    useState<InterviewQuestion | null>(null);
-
+  const [question, setQuestion] = useState<InterviewQuestion | null>(null);
+  const [nextQuestion, setNextQuestion] = useState<InterviewQuestion | null>(null);
   const [answer, setAnswer] = useState("");
+  const [selectedMcq, setSelectedMcq] = useState("");
 
-  const [evaluation, setEvaluation] =
-    useState<Evaluation | null>(null);
-
-  const [summary, setSummary] =
-    useState<SummaryResponse | null>(null);
+  const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
+  const [summary, setSummary] = useState<SummaryResponse | null>(null);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
 
   const [totalQuestions, setTotalQuestions] = useState(0);
-  const [completedQuestions, setCompletedQuestions] = useState(0);
+  const [timer, setTimer] = useState(0);
 
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-
   const [started, setStarted] = useState(false);
   const [finished, setFinished] = useState(false);
 
+  // Fetch Configuration and History
   useEffect(() => {
-    setError("");
-  }, [company, interviewType, difficulty]);
+    loadConfig();
+    loadHistory();
+  }, []);
+
+  // Question Timer
+  useEffect(() => {
+    let interval: any = null;
+    if (started && !finished && question) {
+      interval = setInterval(() => setTimer((t) => t + 1), 1000);
+    }
+    return () => clearInterval(interval);
+  }, [started, finished, question]);
+
+  const loadConfig = async () => {
+    try {
+      const res = await api.get<ConfigResponse>("/api/v1/interview/config");
+      setConfig(res.data);
+      if (res.data.user_profile_summary?.target_company) {
+        setCompany(res.data.user_profile_summary.target_company);
+      }
+      if (res.data.user_profile_summary?.target_role) {
+        setRole(res.data.user_profile_summary.target_role);
+      }
+    } catch (err) {
+      console.error("Failed to load interview config:", err);
+    }
+  };
+
+  const loadHistory = async () => {
+    try {
+      const res = await api.get<HistoryItem[]>("/api/v1/interview/history");
+      setHistory(res.data);
+    } catch (err) {
+      console.error("Failed to load history:", err);
+    }
+  };
 
   const startInterview = async () => {
     try {
@@ -124,19 +201,20 @@ export default function Interview() {
       setSummary(null);
       setNextQuestion(null);
       setAnswer("");
-      setCompletedQuestions(0);
+      setSelectedMcq("");
       setFinished(false);
+      setTimer(0);
 
-      const response = await api.post<StartResponse>(
-        "/api/v1/interview/start",
-        {
-          company,
-          job_description:
-            "Software Engineer responsible for designing, developing, testing, debugging, and maintaining software applications. Strong programming, data structures, algorithms, problem-solving, database, software engineering, and communication skills are expected.",
-          interview_type: interviewType,
-          difficulty,
-        }
-      );
+      const targetComp = company === "Custom" ? customCompany || "Generic" : company;
+
+      const response = await api.post<StartResponse>("/api/v1/interview/start", {
+        company: targetComp,
+        role,
+        experience_level: experienceLevel,
+        interview_round: interviewRound,
+        difficulty,
+        domain,
+      });
 
       setInterviewId(response.data.interview_id);
       setQuestion(response.data.first_question);
@@ -144,25 +222,8 @@ export default function Interview() {
       setStarted(true);
     } catch (err: any) {
       console.error("Failed to start interview:", err);
-
       const detail = err?.response?.data?.detail;
-
-      if (Array.isArray(detail)) {
-        setError(
-          detail
-            .map(
-              (item: any) =>
-                item?.msg || "Invalid interview configuration."
-            )
-            .join(", ")
-        );
-      } else if (typeof detail === "string") {
-        setError(detail);
-      } else {
-        setError(
-          "Unable to start the interview. Please try again."
-        );
-      }
+      setError(typeof detail === "string" ? detail : "Unable to start the interview session.");
     } finally {
       setLoading(false);
     }
@@ -171,8 +232,9 @@ export default function Interview() {
   const submitAnswer = async () => {
     if (!interviewId || !question) return;
 
-    if (!answer.trim()) {
-      setError("Please enter an answer before submitting.");
+    const finalAns = question.options ? selectedMcq : answer.trim();
+    if (!finalAns) {
+      setError("Please select or enter an answer before submitting.");
       return;
     }
 
@@ -180,60 +242,47 @@ export default function Interview() {
       setSubmitting(true);
       setError("");
 
-      const response = await api.post<AnswerResponse>(
-        "/api/v1/interview/answer",
-        {
-          interview_id: interviewId,
-          question_id: question.question_id,
-          answer: answer.trim(),
-        }
-      );
+      const response = await api.post<AnswerResponse>("/api/v1/interview/answer", {
+        interview_id: interviewId,
+        question_id: question.question_id,
+        answer: finalAns,
+      });
 
       setEvaluation(response.data.evaluation);
-      setCompletedQuestions((previous) => previous + 1);
       setAnswer("");
+      setSelectedMcq("");
 
       if (response.data.completed) {
         setFinished(true);
         setNextQuestion(null);
         await loadSummary(interviewId);
+        await loadHistory();
       } else {
-        // Keep the current question visible while its evaluation is shown.
-        // The next question is displayed only after Continue is clicked.
         setNextQuestion(response.data.next_question);
       }
     } catch (err: any) {
       console.error("Failed to submit answer:", err);
-
       const detail = err?.response?.data?.detail;
-
-      if (Array.isArray(detail)) {
-        setError(
-          detail
-            .map(
-              (item: any) =>
-                item?.msg || "Unable to evaluate your answer."
-            )
-            .join(", ")
-        );
-      } else if (typeof detail === "string") {
-        setError(detail);
-      } else {
-        setError(
-          "Unable to evaluate your answer. Please try again."
-        );
-      }
+      setError(typeof detail === "string" ? detail : "Unable to evaluate answer.");
     } finally {
       setSubmitting(false);
     }
   };
 
+  const proceedToNext = () => {
+    if (nextQuestion) {
+      setQuestion(nextQuestion);
+      setNextQuestion(null);
+      setEvaluation(null);
+      setAnswer("");
+      setSelectedMcq("");
+      setTimer(0);
+    }
+  };
+
   const loadSummary = async (id: number) => {
     try {
-      const response = await api.get<SummaryResponse>(
-        `/api/v1/interview/${id}/summary`
-      );
-
+      const response = await api.get<SummaryResponse>(`/api/v1/interview/${id}/summary`);
       setSummary(response.data);
     } catch (err) {
       console.error("Failed to load interview summary:", err);
@@ -245,37 +294,19 @@ export default function Interview() {
     setQuestion(null);
     setNextQuestion(null);
     setAnswer("");
+    setSelectedMcq("");
     setEvaluation(null);
     setSummary(null);
-    setCompletedQuestions(0);
     setTotalQuestions(0);
     setStarted(false);
     setFinished(false);
     setError("");
   };
 
-  const score = evaluation?.score ?? 0;
-
-  const getScoreClass = (value: number) => {
-    if (value >= 80) return "score-good";
-    if (value >= 60) return "score-medium";
-    return "score-low";
-  };
-
-  const getSummaryMessage = (value: number) => {
-    if (value >= 85) {
-      return "Excellent interview performance";
-    }
-
-    if (value >= 70) {
-      return "Strong performance with room to improve";
-    }
-
-    if (value >= 50) {
-      return "Good foundation — targeted practice will help";
-    }
-
-    return "More practice is recommended before interviews";
+  const formatTimer = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
   };
 
   return (
@@ -292,18 +323,40 @@ export default function Interview() {
           margin: 0 auto;
         }
 
+        .tab-switcher {
+          display: flex;
+          gap: 12px;
+          margin-bottom: 24px;
+        }
+
+        .tab-btn {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 18px;
+          border-radius: 12px;
+          font-size: 14px;
+          font-weight: 700;
+          cursor: pointer;
+          border: 1px solid #e2e8f0;
+          background: white;
+          color: #64748b;
+          transition: 0.2s;
+        }
+
+        .tab-btn.active {
+          background: linear-gradient(135deg, #6366f1, #8b5cf6);
+          color: white;
+          border-color: transparent;
+          box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+        }
+
         .interview-header {
           display: flex;
           justify-content: space-between;
           align-items: flex-start;
           gap: 20px;
-          margin-bottom: 28px;
-        }
-
-        .interview-title-row {
-          display: flex;
-          align-items: center;
-          gap: 14px;
+          margin-bottom: 24px;
         }
 
         .interview-icon {
@@ -318,64 +371,20 @@ export default function Interview() {
           box-shadow: 0 8px 20px rgba(99, 102, 241, 0.22);
         }
 
-        .interview-header h1 {
-          margin: 0;
-          font-size: 28px;
-          font-weight: 800;
-        }
-
-        .interview-header p {
-          margin: 6px 0 0;
-          color: #667085;
-          font-size: 14px;
-        }
-
-        .interview-badge {
-          display: flex;
-          align-items: center;
-          gap: 7px;
-          padding: 8px 12px;
-          border-radius: 999px;
-          background: #f3f0ff;
-          color: #6841d8;
-          font-size: 12px;
-          font-weight: 700;
-        }
-
-        .setup-card,
-        .question-card,
-        .evaluation-card,
-        .summary-card {
+        .setup-card, .question-card, .evaluation-card, .summary-card, .history-card {
           background: white;
           border: 1px solid #e6e9f0;
           border-radius: 20px;
-          box-shadow: 0 8px 28px rgba(16, 24, 40, 0.06);
-        }
-
-        .setup-card {
           padding: 28px;
-        }
-
-        .section-heading {
-          margin-bottom: 22px;
-        }
-
-        .section-heading h2 {
-          margin: 0;
-          font-size: 20px;
-          font-weight: 800;
-        }
-
-        .section-heading p {
-          margin: 6px 0 0;
-          color: #667085;
-          font-size: 14px;
+          box-shadow: 0 8px 28px rgba(16, 24, 40, 0.06);
+          margin-bottom: 24px;
         }
 
         .setup-grid {
           display: grid;
           grid-template-columns: repeat(3, 1fr);
           gap: 18px;
+          margin-bottom: 22px;
         }
 
         .field {
@@ -390,7 +399,7 @@ export default function Interview() {
           color: #344054;
         }
 
-        .field select {
+        .field select, .field input {
           height: 46px;
           padding: 0 13px;
           border: 1px solid #d9dee8;
@@ -399,18 +408,31 @@ export default function Interview() {
           color: #172033;
           font-size: 14px;
           outline: none;
-          cursor: pointer;
         }
 
-        .field select:focus {
-          border-color: #6366f1;
-          box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        .profile-signals-card {
+          background: #f8fafc;
+          border: 1px dashed #cbd5e1;
+          border-radius: 14px;
+          padding: 16px;
+          margin-bottom: 22px;
         }
 
-        .start-button,
-        .submit-button,
-        .reset-button,
-        .next-button {
+        .disclaimer-banner {
+          background: #eff6ff;
+          border: 1px solid #bfdbfe;
+          color: #1e40af;
+          border-radius: 10px;
+          padding: 10px 14px;
+          font-size: 12px;
+          font-weight: 600;
+          margin-bottom: 20px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        }
+
+        .start-button, .submit-button, .next-button, .reset-button {
           border: none;
           cursor: pointer;
           border-radius: 11px;
@@ -419,377 +441,138 @@ export default function Interview() {
           align-items: center;
           justify-content: center;
           gap: 8px;
-          transition: 0.2s ease;
+          transition: 0.2s;
         }
 
         .start-button {
-          margin-top: 22px;
           width: 100%;
           height: 48px;
           color: white;
           background: linear-gradient(135deg, #6366f1, #7c3aed);
         }
 
-        .start-button:hover,
-        .submit-button:hover,
-        .next-button:hover {
-          transform: translateY(-1px);
-          box-shadow: 0 8px 18px rgba(99, 102, 241, 0.2);
-        }
-
-        .start-button:disabled,
-        .submit-button:disabled {
-          opacity: 0.65;
-          cursor: not-allowed;
-          transform: none;
-        }
-
-        .error-box {
-          margin-top: 18px;
-          padding: 12px 14px;
-          border-radius: 10px;
-          background: #fff1f2;
-          border: 1px solid #fecdd3;
-          color: #be123c;
-          font-size: 13px;
-        }
-
-        .interview-topbar {
+        .question-meta-row {
           display: flex;
-          justify-content: space-between;
           align-items: center;
-          gap: 20px;
-          margin-bottom: 18px;
-        }
-
-        .interview-meta {
-          display: flex;
-          gap: 9px;
-          flex-wrap: wrap;
-        }
-
-        .meta-pill {
-          padding: 7px 11px;
-          border-radius: 999px;
-          background: #f5f6fa;
-          color: #475467;
-          font-size: 12px;
-          font-weight: 700;
-        }
-
-        .progress-info {
-          min-width: 220px;
-        }
-
-        .progress-label {
-          display: flex;
           justify-content: space-between;
-          font-size: 12px;
-          color: #667085;
-          margin-bottom: 7px;
-        }
-
-        .progress-track {
-          height: 7px;
-          border-radius: 99px;
-          background: #eaecf0;
-          overflow: hidden;
-        }
-
-        .progress-fill {
-          height: 100%;
-          border-radius: 99px;
-          background: linear-gradient(90deg, #6366f1, #8b5cf6);
-          transition: width 0.3s ease;
-        }
-
-        .question-card {
-          padding: 30px;
-        }
-
-        .question-category {
-          display: inline-flex;
-          align-items: center;
-          gap: 7px;
-          padding: 7px 10px;
-          border-radius: 999px;
-          background: #eef2ff;
-          color: #4f46e5;
-          font-size: 12px;
-          font-weight: 800;
-          text-transform: capitalize;
-          margin-bottom: 18px;
-        }
-
-        .question-number {
-          color: #98a2b3;
-          font-size: 13px;
-          font-weight: 700;
-          margin-bottom: 9px;
+          gap: 12px;
+          margin-bottom: 16px;
         }
 
         .question-text {
-          font-size: 24px;
+          font-size: 22px;
           line-height: 1.45;
-          font-weight: 750;
-          color: #172033;
-          margin: 0 0 24px;
+          font-weight: 800;
+          color: #0f172a;
+          margin-bottom: 20px;
+        }
+
+        .mcq-options {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          margin-bottom: 20px;
+        }
+
+        .mcq-option {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 14px;
+          border: 1px solid #e2e8f0;
+          border-radius: 12px;
+          cursor: pointer;
+          transition: 0.2s;
+        }
+
+        .mcq-option:hover {
+          border-color: #6366f1;
+          background: #f8fafc;
+        }
+
+        .mcq-option.selected {
+          border-color: #6366f1;
+          background: #eef2ff;
         }
 
         .answer-box {
           width: 100%;
-          min-height: 180px;
-          resize: vertical;
-          box-sizing: border-box;
-          border: 1px solid #d9dee8;
+          min-height: 160px;
+          border: 1px solid #cbd5e1;
           border-radius: 14px;
-          padding: 15px;
+          padding: 14px;
           font-family: inherit;
           font-size: 14px;
           line-height: 1.6;
           outline: none;
         }
 
-        .answer-box:focus {
-          border-color: #6366f1;
-          box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-        }
-
-        .answer-footer {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 15px;
-          margin-top: 14px;
-        }
-
-        .answer-hint {
-          color: #98a2b3;
-          font-size: 12px;
-        }
-
-        .submit-button,
-        .next-button {
-          min-width: 150px;
-          height: 44px;
-          color: white;
-          background: linear-gradient(135deg, #6366f1, #7c3aed);
-        }
-
-        .evaluation-card {
-          margin-top: 18px;
-          padding: 24px;
-        }
-
-        .evaluation-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          gap: 15px;
+        .scores-grid {
+          display: grid;
+          grid-template-columns: repeat(3, 1fr);
+          gap: 14px;
           margin-bottom: 20px;
         }
 
-        .evaluation-title {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-
-        .evaluation-title h3 {
-          margin: 0;
-          font-size: 17px;
-        }
-
-        .score-badge {
-          min-width: 64px;
-          height: 48px;
+        .score-pill {
+          padding: 14px;
           border-radius: 12px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 18px;
-          font-weight: 900;
-        }
-
-        .score-good {
-          background: #ecfdf3;
-          color: #027a48;
-        }
-
-        .score-medium {
-          background: #fffaeb;
-          color: #b54708;
-        }
-
-        .score-low {
-          background: #fff1f2;
-          color: #be123c;
-        }
-
-        .feedback {
-          padding: 16px;
-          border-radius: 12px;
-          background: #f8f9fc;
-          color: #475467;
-          font-size: 14px;
-          line-height: 1.65;
-          margin-bottom: 18px;
-        }
-
-        .evaluation-columns {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 14px;
-        }
-
-        .eval-section {
-          padding: 15px;
-          border: 1px solid #eaecf0;
-          border-radius: 12px;
-        }
-
-        .eval-section h4 {
-          margin: 0 0 10px;
-          font-size: 13px;
-        }
-
-        .eval-section ul {
-          margin: 0;
-          padding-left: 18px;
-          color: #667085;
-          font-size: 13px;
-          line-height: 1.6;
-        }
-
-        .eval-section li {
-          margin-bottom: 5px;
-        }
-
-        .next-row {
-          display: flex;
-          justify-content: flex-end;
-          margin-top: 20px;
-        }
-
-        .summary-card {
-          padding: 34px;
           text-align: center;
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
         }
 
-        .summary-icon {
-          width: 68px;
-          height: 68px;
-          margin: 0 auto 16px;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: #ecfdf3;
-          color: #039855;
-        }
-
-        .summary-card h2 {
-          margin: 0;
-          font-size: 25px;
-        }
-
-        .summary-card > p {
-          margin: 8px 0 24px;
-          color: #667085;
-        }
-
-        .summary-score {
-          font-size: 56px;
-          font-weight: 900;
-          line-height: 1;
-          margin-bottom: 8px;
-        }
-
-        .summary-message {
-          color: #475467;
-          font-size: 14px;
-          margin-bottom: 26px;
-        }
-
-        .summary-stats {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 14px;
-          margin-bottom: 25px;
-        }
-
-        .summary-stat {
-          padding: 18px;
-          background: #f8f9fc;
-          border-radius: 13px;
-        }
-
-        .summary-stat strong {
+        .score-pill strong {
           display: block;
-          font-size: 22px;
+          font-size: 24px;
+          font-weight: 900;
           margin-bottom: 4px;
         }
 
-        .summary-stat span {
-          color: #667085;
-          font-size: 12px;
+        .eval-details-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 16px;
+          margin-top: 16px;
         }
 
-        .reset-button {
-          height: 44px;
-          padding: 0 18px;
-          color: #344054;
-          background: white;
-          border: 1px solid #d0d5dd;
+        .eval-box {
+          padding: 16px;
+          border-radius: 12px;
+          border: 1px solid #e2e8f0;
+          background: #ffffff;
         }
 
-        .reset-button:hover {
-          background: #f9fafb;
+        .eval-box h4 {
+          margin: 0 0 8px;
+          font-size: 13px;
+          font-weight: 700;
         }
 
-        .loading-center {
+        .eval-box ul {
+          margin: 0;
+          padding-left: 18px;
+          font-size: 13px;
+          color: #475569;
+        }
+
+        .roadmap-list {
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          margin-top: 12px;
+          text-align: left;
+        }
+
+        .roadmap-item {
           display: flex;
           align-items: center;
-          justify-content: center;
-          gap: 9px;
-          padding: 25px;
-          color: #667085;
-          font-size: 13px;
-        }
-
-        @media (max-width: 800px) {
-          .interview-page {
-            padding: 18px;
-          }
-
-          .interview-header {
-            flex-direction: column;
-          }
-
-          .setup-grid,
-          .evaluation-columns,
-          .summary-stats {
-            grid-template-columns: 1fr;
-          }
-
-          .interview-topbar,
-          .answer-footer {
-            flex-direction: column;
-            align-items: stretch;
-          }
-
-          .progress-info {
-            width: 100%;
-          }
-
-          .question-text {
-            font-size: 20px;
-          }
-
-          .submit-button,
-          .next-button {
-            width: 100%;
-          }
+          gap: 10px;
+          padding: 12px 16px;
+          background: #f1f5f9;
+          border-radius: 10px;
+          font-size: 14px;
+          font-weight: 600;
         }
       `}</style>
 
@@ -797,355 +580,353 @@ export default function Interview() {
         <BackButton />
 
         <div className="interview-header">
-          <div>
-            <div className="interview-title-row">
-              <div className="interview-icon">
-                <Brain size={25} />
-              </div>
-
-              <div>
-                <h1>AI Interview</h1>
-                <p>
-                  Practice realistic interviews and get AI-powered feedback.
-                </p>
-              </div>
+          <div style={{ display: "flex", gap: "14px", alignItems: "center" }}>
+            <div className="interview-icon">
+              <Brain className="w-6 h-6" />
             </div>
-          </div>
-
-          <div className="interview-badge">
-            <Sparkles size={14} />
-            AI Evaluated
+            <div>
+              <h1 style={{ margin: 0, fontSize: "26px", fontWeight: 800 }}>Company-Style AI Interview Engine</h1>
+              <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: "14px" }}>
+                Role-specific, profile-aware interview preparation across 11 rounds & 16 technical domains.
+              </p>
+            </div>
           </div>
         </div>
 
-        {!started && (
-          <div className="setup-card">
-            <div className="section-heading">
-              <h2>Configure your interview</h2>
-              <p>
-                Choose your target company, interview style and difficulty.
-              </p>
-            </div>
+        {/* Tab Navigation */}
+        <div className="tab-switcher">
+          <button
+            className={`tab-btn ${activeTab === "practice" ? "active" : ""}`}
+            onClick={() => setActiveTab("practice")}
+          >
+            <Compass className="w-4 h-4" /> Practice Interview
+          </button>
+          <button
+            className={`tab-btn ${activeTab === "history" ? "active" : ""}`}
+            onClick={() => setActiveTab("history")}
+          >
+            <History className="w-4 h-4" /> Session History ({history.length})
+          </button>
+        </div>
 
-            <div className="setup-grid">
-              <div className="field">
-                <label>Target Company</label>
+        {/* Framing Disclaimer */}
+        <div className="disclaimer-banner">
+          <Sparkles className="w-4 h-4" />
+          <span>Notice: All questions are realistic company-style interview questions based on role expectations and standard interview patterns.</span>
+        </div>
 
-                <select
-                  value={company}
-                  onChange={(e) => setCompany(e.target.value)}
-                >
-                  {companies.map((item) => (
-                    <option key={item} value={item}>
-                      {item}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="field">
-                <label>Interview Type</label>
-
-                <select
-                  value={interviewType}
-                  onChange={(e) =>
-                    setInterviewType(e.target.value)
-                  }
-                >
-                  {interviewTypes.map((item) => (
-                    <option key={item} value={item}>
-                      {item.charAt(0).toUpperCase() + item.slice(1)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="field">
-                <label>Difficulty</label>
-
-                <select
-                  value={difficulty}
-                  onChange={(e) =>
-                    setDifficulty(e.target.value)
-                  }
-                >
-                  {difficulties.map((item) => (
-                    <option key={item} value={item}>
-                      {item.charAt(0).toUpperCase() + item.slice(1)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <button
-              className="start-button"
-              onClick={startInterview}
-              disabled={loading}
-            >
-              {loading ? (
-                <>
-                  <Loader2 size={17} />
-                  Starting Interview...
-                </>
-              ) : (
-                <>
-                  <Sparkles size={17} />
-                  Start AI Interview
-                </>
-              )}
-            </button>
-
-            {error && <div className="error-box">{error}</div>}
-          </div>
-        )}
-
-        {started && !finished && question && (
+        {activeTab === "practice" ? (
           <>
-            <div className="interview-topbar">
-              <div className="interview-meta">
-                <span className="meta-pill">
-                  <Target size={12} /> {company}
-                </span>
+            {!started ? (
+              <div className="setup-card">
+                <h2 style={{ margin: "0 0 18px", fontSize: "18px", fontWeight: 800 }}>Configure Your Interview Session</h2>
 
-                <span className="meta-pill">
-                  {interviewType}
-                </span>
+                {/* Profile Context Banner if available */}
+                {config?.user_profile_summary && (
+                  <div className="profile-signals-card">
+                    <div style={{ fontSize: "13px", fontWeight: 700, color: "#334155", marginBottom: "6px" }}>
+                      Detected Profile Signals:
+                    </div>
+                    <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", fontSize: "12px", color: "#64748b" }}>
+                      <span>Target: <strong>{config.user_profile_summary.target_company || "Generic"}</strong></span>
+                      <span>Role: <strong>{config.user_profile_summary.target_role || "Software Engineer"}</strong></span>
+                      <span>Projects: <strong>{config.user_profile_summary.projects_count}</strong></span>
+                      <span>Skills: <strong>{config.user_profile_summary.skills_count}</strong></span>
+                      {config.user_profile_summary.weak_topics?.length ? (
+                        <span style={{ color: "#e11d48" }}>Identified Weak Areas: <strong>{config.user_profile_summary.weak_topics.join(", ")}</strong></span>
+                      ) : null}
+                    </div>
+                  </div>
+                )}
 
-                <span className="meta-pill">
-                  <Clock size={12} /> {difficulty}
-                </span>
-              </div>
+                <div className="setup-grid">
+                  <div className="field">
+                    <label>Target Company</label>
+                    <select value={company} onChange={(e) => setCompany(e.target.value)}>
+                      <option value="Generic">Generic / General</option>
+                      <option value="Microsoft">Microsoft</option>
+                      <option value="Amazon">Amazon</option>
+                      <option value="Zoho">Zoho</option>
+                      <option value="TCS">TCS</option>
+                      <option value="Infosys">Infosys</option>
+                      <option value="Custom">Custom Entry...</option>
+                    </select>
+                  </div>
 
-              <div className="progress-info">
-                <div className="progress-label">
-                  <span>Interview progress</span>
-                  <span>
-                    {completedQuestions}/{totalQuestions}
-                  </span>
-                </div>
-
-                <div className="progress-track">
-                  <div
-                    className="progress-fill"
-                    style={{
-                      width: `${
-                        totalQuestions
-                          ? (completedQuestions / totalQuestions) * 100
-                          : 0
-                      }%`,
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="question-card">
-              <div className="question-category">
-                <MessageSquare size={13} />
-                {question.category}
-              </div>
-
-              <div className="question-number">
-                Question {completedQuestions + 1} of {totalQuestions}
-              </div>
-
-              <h2 className="question-text">
-                {question.question}
-              </h2>
-
-              <textarea
-                className="answer-box"
-                placeholder="Type your answer here..."
-                value={answer}
-                onChange={(e) => setAnswer(e.target.value)}
-                disabled={submitting}
-              />
-
-              <div className="answer-footer">
-                <span className="answer-hint">
-                  Give a clear answer with examples where possible.
-                </span>
-
-                <button
-                  className="submit-button"
-                  onClick={submitAnswer}
-                  disabled={submitting}
-                >
-                  {submitting ? (
-                    <>
-                      <Loader2 size={16} />
-                      Evaluating...
-                    </>
-                  ) : (
-                    <>
-                      <Send size={16} />
-                      Submit Answer
-                    </>
+                  {company === "Custom" && (
+                    <div className="field">
+                      <label>Enter Company Name</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Google, Stripe"
+                        value={customCompany}
+                        onChange={(e) => setCustomCompany(e.target.value)}
+                      />
+                    </div>
                   )}
+
+                  <div className="field">
+                    <label>Target Role</label>
+                    <select value={role} onChange={(e) => setRole(e.target.value)}>
+                      {config?.roles.map((r) => (
+                        <option key={r} value={r}>{r}</option>
+                      )) || <option value="Software Engineer">Software Engineer</option>}
+                    </select>
+                  </div>
+
+                  <div className="field">
+                    <label>Experience Level</label>
+                    <select value={experienceLevel} onChange={(e) => setExperienceLevel(e.target.value)}>
+                      {config?.experience_levels.map((el) => (
+                        <option key={el} value={el}>{el}</option>
+                      )) || <option value="Entry Level">Entry Level</option>}
+                    </select>
+                  </div>
+
+                  <div className="field">
+                    <label>Interview Round</label>
+                    <select value={interviewRound} onChange={(e) => setInterviewRound(e.target.value)}>
+                      {config?.interview_rounds.map((ir) => (
+                        <option key={ir} value={ir}>{ir}</option>
+                      )) || <option value="Technical MCQ">Technical MCQ</option>}
+                    </select>
+                  </div>
+
+                  <div className="field">
+                    <label>Difficulty</label>
+                    <select value={difficulty} onChange={(e) => setDifficulty(e.target.value)}>
+                      {config?.difficulties.map((d) => (
+                        <option key={d} value={d}>{d}</option>
+                      )) || <option value="Medium">Medium</option>}
+                    </select>
+                  </div>
+
+                  <div className="field">
+                    <label>Technical Domain</label>
+                    <select value={domain} onChange={(e) => setDomain(e.target.value)}>
+                      {config?.domains.map((dom) => (
+                        <option key={dom} value={dom}>{dom}</option>
+                      )) || <option value="DSA">DSA</option>}
+                    </select>
+                  </div>
+                </div>
+
+                {error && <div style={{ color: "#ef4444", fontSize: "13px", marginBottom: "14px" }}>{error}</div>}
+
+                <button className="start-button" onClick={startInterview} disabled={loading}>
+                  {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Start Interview Session"}
                 </button>
               </div>
+            ) : finished && summary ? (
+              /* POST-INTERVIEW SUMMARY REPORT */
+              <div className="summary-card" style={{ textAlign: "center" }}>
+                <div style={{ width: "64px", height: "64px", margin: "0 auto 16px", borderRadius: "50%", background: "#ecfdf5", color: "#10b981", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <Trophy className="w-8 h-8" />
+                </div>
+                <h2 style={{ margin: 0, fontSize: "24px", fontWeight: 800 }}>Interview Evaluation Report</h2>
+                <p style={{ color: "#64748b", margin: "6px 0 20px" }}>
+                  Completed {summary.completed_questions} of {summary.total_questions} questions for {summary.target_role} ({summary.company}).
+                </p>
 
-              {error && <div className="error-box">{error}</div>}
-            </div>
+                <div className="scores-grid">
+                  <div className="score-pill">
+                    <strong>{summary.average_score}%</strong>
+                    <span style={{ fontSize: "12px", color: "#64748b" }}>Overall Score</span>
+                  </div>
+                  <div className="score-pill">
+                    <strong>{summary.communication_score}%</strong>
+                    <span style={{ fontSize: "12px", color: "#64748b" }}>Communication Score</span>
+                  </div>
+                  <div className="score-pill">
+                    <strong style={{ fontSize: "18px", color: "#6366f1" }}>{summary.next_recommended_difficulty}</strong>
+                    <span style={{ fontSize: "12px", color: "#64748b" }}>Next Recommended Difficulty</span>
+                  </div>
+                </div>
 
-            {evaluation && (
-              <div className="evaluation-card">
-                <div className="evaluation-header">
-                  <div className="evaluation-title">
-                    <CheckCircle2 size={20} color="#039855" />
-                    <h3>AI Evaluation</h3>
+                <div className="eval-details-grid" style={{ textAlign: "left" }}>
+                  <div className="eval-box">
+                    <h4 style={{ color: "#10b981" }}>Strengths</h4>
+                    <ul>
+                      {summary.strengths.map((s, idx) => (
+                        <li key={idx}>{s}</li>
+                      ))}
+                    </ul>
                   </div>
 
-                  <div
-                    className={`score-badge ${getScoreClass(
-                      score
-                    )}`}
-                  >
-                    {Math.round(score)}/100
+                  <div className="eval-box">
+                    <h4 style={{ color: "#ef4444" }}>Technical Gaps</h4>
+                    <ul>
+                      {summary.technical_gaps.map((g, idx) => (
+                        <li key={idx}>{g}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="eval-box">
+                    <h4 style={{ color: "#6366f1" }}>Communication Feedback</h4>
+                    <ul>
+                      {summary.communication_feedback.map((cf, idx) => (
+                        <li key={idx}>{cf}</li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="eval-box">
+                    <h4 style={{ color: "#f59e0b" }}>Recommended Topics</h4>
+                    <ul>
+                      {summary.recommended_topics.map((rt, idx) => (
+                        <li key={idx}>{rt}</li>
+                      ))}
+                    </ul>
                   </div>
                 </div>
 
-                <div className="feedback">
-                  {evaluation.feedback}
+                {/* Personal Roadmap */}
+                <div style={{ marginTop: "24px", textAlign: "left" }}>
+                  <h3 style={{ fontSize: "16px", fontWeight: 800, margin: "0 0 12px" }}>Personal Preparation Roadmap</h3>
+                  <div className="roadmap-list">
+                    {summary.preparation_roadmap.map((step, idx) => (
+                      <div className="roadmap-item" key={idx}>
+                        <BookOpen className="w-4 h-4 text-indigo-600" />
+                        <span>{step}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
-                <div className="evaluation-columns">
-                  {evaluation.strengths &&
-                    evaluation.strengths.length > 0 && (
-                      <div className="eval-section">
-                        <h4>Strengths</h4>
+                <button className="start-button" style={{ marginTop: "28px" }} onClick={resetInterview}>
+                  <RotateCcw className="w-4 h-4" /> Start New Interview
+                </button>
+              </div>
+            ) : question ? (
+              /* INTERVIEW QUESTION & ANSWER CANVAS */
+              <div className="question-card">
+                <div className="question-meta-row">
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                    <span style={{ background: "#eef2ff", color: "#6366f1", padding: "4px 10px", borderRadius: "999px", fontSize: "12px", fontWeight: 700 }}>
+                      Q{question.question_id} of {totalQuestions}
+                    </span>
+                    <span style={{ background: "#f1f5f9", color: "#475569", padding: "4px 10px", borderRadius: "999px", fontSize: "12px", fontWeight: 700 }}>
+                      {question.category}
+                    </span>
+                    <span style={{ background: "#fef3c7", color: "#b45309", padding: "4px 10px", borderRadius: "999px", fontSize: "12px", fontWeight: 700 }}>
+                      {question.difficulty}
+                    </span>
+                  </div>
 
-                        <ul>
-                          {evaluation.strengths.map(
-                            (item, index) => (
-                              <li key={index}>{item}</li>
-                            )
-                          )}
-                        </ul>
-                      </div>
-                    )}
-
-                  {evaluation.weaknesses &&
-                    evaluation.weaknesses.length > 0 && (
-                      <div className="eval-section">
-                        <h4>Areas to Improve</h4>
-
-                        <ul>
-                          {evaluation.weaknesses.map(
-                            (item, index) => (
-                              <li key={index}>{item}</li>
-                            )
-                          )}
-                        </ul>
-                      </div>
-                    )}
-
-                  {evaluation.suggestions &&
-                    evaluation.suggestions.length > 0 && (
-                      <div className="eval-section">
-                        <h4>Suggestions</h4>
-
-                        <ul>
-                          {evaluation.suggestions.map(
-                            (item, index) => (
-                              <li key={index}>{item}</li>
-                            )
-                          )}
-                        </ul>
-                      </div>
-                    )}
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", fontWeight: 700, color: "#64748b" }}>
+                    <Clock className="w-4 h-4" />
+                    <span>{formatTimer(timer)}</span>
+                  </div>
                 </div>
 
-                {!finished && question && (
-                  <div className="next-row">
-                    <button
-                      className="next-button"
-                      onClick={() => {
-                        setEvaluation(null);
-                        setAnswer("");
+                <div className="question-text">{question.question}</div>
 
-                        if (nextQuestion) {
-                          setQuestion(nextQuestion);
-                          setNextQuestion(null);
-                        }
-                      }}
-                    >
-                      Continue
-                      <ChevronRight size={16} />
+                {/* Concepts Tested */}
+                {question.concepts_tested && question.concepts_tested.length > 0 && (
+                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "16px" }}>
+                    {question.concepts_tested.map((c, idx) => (
+                      <span key={idx} style={{ fontSize: "11px", background: "#f8fafc", border: "1px solid #e2e8f0", padding: "3px 8px", borderRadius: "6px", color: "#64748b" }}>
+                        #{c}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Question Input: MCQ or Open Text */}
+                {question.options && question.options.length > 0 ? (
+                  <div className="mcq-options">
+                    {question.options.map((opt, idx) => (
+                      <div
+                        key={idx}
+                        className={`mcq-option ${selectedMcq === opt ? "selected" : ""}`}
+                        onClick={() => setSelectedMcq(opt)}
+                      >
+                        <input
+                          type="radio"
+                          name="mcq"
+                          checked={selectedMcq === opt}
+                          onChange={() => setSelectedMcq(opt)}
+                        />
+                        <span style={{ fontSize: "14px", fontWeight: 600 }}>{opt}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div>
+                    <textarea
+                      className="answer-box"
+                      placeholder="Type your interview response clearly here..."
+                      value={answer}
+                      onChange={(e) => setAnswer(e.target.value)}
+                      disabled={!!evaluation}
+                    />
+                  </div>
+                )}
+
+                {error && <div style={{ color: "#ef4444", fontSize: "13px", marginTop: "10px" }}>{error}</div>}
+
+                {/* Evaluation Card for current answer */}
+                {evaluation ? (
+                  <div className="evaluation-card">
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+                      <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 800 }}>Answer Evaluation</h3>
+                      <div style={{ fontSize: "18px", fontWeight: 900, color: evaluation.score >= 70 ? "#10b981" : "#f59e0b" }}>
+                        Score: {evaluation.score}/100
+                      </div>
+                    </div>
+
+                    {evaluation.adaptation_reason && (
+                      <div style={{ background: "#fef3c7", color: "#92400e", padding: "8px 12px", borderRadius: "8px", fontSize: "12px", marginBottom: "12px" }}>
+                        {evaluation.adaptation_reason}
+                      </div>
+                    )}
+
+                    <p style={{ fontSize: "13px", color: "#475569", lineHeight: 1.5 }}>{evaluation.feedback}</p>
+
+                    <div style={{ background: "#f8fafc", padding: "12px", borderRadius: "10px", marginTop: "10px", fontSize: "13px" }}>
+                      <strong>Ideal Answer:</strong>
+                      <p style={{ margin: "4px 0 0", color: "#334155" }}>{evaluation.ideal_answer}</p>
+                    </div>
+
+                    <div style={{ marginTop: "16px", display: "flex", justifyContent: "flex-end" }}>
+                      <button className="next-button" onClick={proceedToNext}>
+                        Continue to Next Question <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ marginTop: "18px", display: "flex", justifyContent: "flex-end" }}>
+                    <button className="submit-button" onClick={submitAnswer} disabled={submitting}>
+                      {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Submit Answer"}
                     </button>
                   </div>
                 )}
               </div>
-            )}
+            ) : null}
           </>
-        )}
-
-        {finished && (
-          <div className="summary-card">
-            <div className="summary-icon">
-              {summary && summary.average_score >= 70 ? (
-                <Trophy size={32} />
-              ) : (
-                <CheckCircle2 size={32} />
-              )}
-            </div>
-
-            <h2>Interview Completed</h2>
-
-            <p>
-              {summary
-                ? getSummaryMessage(summary.average_score)
-                : "Your interview has been evaluated."}
-            </p>
-
-            {summary ? (
-              <>
-                <div
-                  className={`summary-score ${getScoreClass(
-                    summary.average_score
-                  )}`}
-                >
-                  {Math.round(summary.average_score)}/100
-                </div>
-
-                <div className="summary-message">
-                  Average interview score
-                </div>
-
-                <div className="summary-stats">
-                  <div className="summary-stat">
-                    <strong>
-                      {summary.completed_questions}
-                    </strong>
-                    <span>Questions Completed</span>
-                  </div>
-
-                  <div className="summary-stat">
-                    <strong>
-                      {summary.total_questions}
-                    </strong>
-                    <span>Total Questions</span>
-                  </div>
-
-                  <div className="summary-stat">
-                    <strong>{summary.company}</strong>
-                    <span>Target Company</span>
-                  </div>
-                </div>
-
-                <button
-                  className="reset-button"
-                  onClick={resetInterview}
-                >
-                  <RotateCcw size={16} />
-                  Start Another Interview
-                </button>
-              </>
+        ) : (
+          /* SESSION HISTORY TAB */
+          <div className="history-card">
+            <h2 style={{ margin: "0 0 16px", fontSize: "18px", fontWeight: 800 }}>Your Interview History</h2>
+            {history.length === 0 ? (
+              <p style={{ color: "#64748b", fontSize: "14px" }}>No past interview sessions found. Complete your first practice session!</p>
             ) : (
-              <div className="loading-center">
-                <Loader2 size={17} />
-                Loading your interview summary...
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                {history.map((h) => (
+                  <div key={h.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 18px", border: "1px solid #e2e8f0", borderRadius: "12px" }}>
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: "15px" }}>{h.interview_type} — {h.company}</div>
+                      <div style={{ fontSize: "12px", color: "#64748b" }}>Role: {h.target_role} | Difficulty: {h.difficulty} | {new Date(h.created_at).toLocaleDateString()}</div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div style={{ fontSize: "18px", fontWeight: 900, color: h.average_score >= 70 ? "#10b981" : "#f59e0b" }}>
+                        {h.average_score}%
+                      </div>
+                      <span style={{ fontSize: "11px", textTransform: "capitalize", color: "#64748b" }}>{h.performance_level}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
