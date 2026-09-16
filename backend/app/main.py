@@ -15,6 +15,7 @@ import app.database.models
 import app.profile.models
 import app.training.models
 import app.assessment.models
+import app.aptitude.models
 import app.interview.models
 import app.ats.models
 import app.github.models
@@ -33,6 +34,7 @@ from app.api.interview import router as interview_router
 from app.api.readiness import router as readiness_router
 from app.api.training import router as training_router
 from app.api.assessment import router as assessment_router
+from app.api.aptitude import router as aptitude_router
 from app.github.api import router as github_router
 
 
@@ -99,6 +101,7 @@ app.include_router(interview_router)
 app.include_router(readiness_router)
 app.include_router(training_router)
 app.include_router(assessment_router)
+app.include_router(aptitude_router)
 app.include_router(github_router)
 
 
